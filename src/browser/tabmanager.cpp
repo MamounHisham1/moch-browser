@@ -14,11 +14,17 @@ TabManager::TabManager(Settings *settings, QWebEngineProfile *profile, QObject *
     : QObject(parent), m_settings(settings), m_profile(profile)
 {
     m_stack = new QStackedWidget();
+    connect(m_stack, &QObject::destroyed, this, [this] {
+        m_views.clear();
+        m_closedUrls.clear();
+        m_current = -1;
+    });
 }
 
 TabManager::~TabManager()
 {
-    delete m_stack;
+    if (m_stack && !m_stack->parent())
+        delete m_stack;
 }
 
 QWidget *TabManager::widget() const
@@ -56,7 +62,8 @@ TabInfo TabManager::info(int index) const
     info.title = v->title().isEmpty() ? tr("New Tab") : v->title();
     info.url = v->url();
     info.icon = v->icon();
-    info.loadProgress = 100;
+    info.loading = v->isLoading();
+    info.loadProgress = v->loadProgress();
     return info;
 }
 
@@ -84,7 +91,14 @@ int TabManager::addTab(const QUrl &url, bool background)
         emit tabsChanged();
     });
     connect(view, &QWebEngineView::loadProgress, this, [this, view](int progress) {
+        view->setLoadProgressValue(progress);
         emit tabLoadProgress(view->tabIndex(), progress);
+    });
+    connect(view, &QWebEngineView::loadStarted, this, [view] { view->setLoadingState(true); });
+    connect(view, &QWebEngineView::loadFinished, this, [view](bool ok) {
+        view->setLoadingState(false);
+        if (!ok)
+            qWarning("moch: tab %d failed to load", view->tabIndex());
     });
 
     view->load(url);

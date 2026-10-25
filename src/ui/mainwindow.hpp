@@ -1,12 +1,15 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QUrl>
 
-class QAction;
+class QLabel;
 class QLineEdit;
-class QTabBar;
 class Settings;
+class TabBar;
 class TabManager;
+class Toolbar;
+class QWidget;
 
 class MainWindow : public QMainWindow
 {
@@ -14,21 +17,31 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(Settings *settings, TabManager *tabs, QWidget *parent = nullptr);
 
-protected:
-    void keyPressEvent(QKeyEvent *event) override;
+    Toolbar *toolbar() const { return m_toolbar; }
+    TabBar *tabBar() const { return m_tabBar; }
+
+public slots:
+    void applyTheme();
+
+signals:
+    void newWindowRequested();
+    void bookmarkToggleRequested(const QUrl &url);
+    void openUrlRequested(const QUrl &url);
 
 private:
-    void buildToolbar();
-    void buildTabBar();
+    QWidget *buildFindBar();
     void connectTabs();
+    void buildShortcuts();
+    void buildMenuButton();
     void updateNavigationState();
-    void applyTheme();
+    void findNext(bool forward);
+    void toggleFindBar();
 
     Settings *m_settings = nullptr;
     TabManager *m_tabs = nullptr;
-    QLineEdit *m_addressBar = nullptr;
-    QTabBar *m_tabBar = nullptr;
-    QAction *m_backAction = nullptr;
-    QAction *m_forwardAction = nullptr;
-    QAction *m_reloadAction = nullptr;
+    Toolbar *m_toolbar = nullptr;
+    TabBar *m_tabBar = nullptr;
+    QWidget *m_findBar = nullptr;
+    QLineEdit *m_findInput = nullptr;
+    QLabel *m_findStatus = nullptr;
 };

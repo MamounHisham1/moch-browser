@@ -1,17 +1,22 @@
 #include "ui/mainwindow.hpp"
 
-#include <QAction>
 #include <QFile>
-#include <QKeyEvent>
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QLineEdit>
-#include <QTabBar>
-#include <QToolBar>
+#include <QMenu>
+#include <QShortcut>
 #include <QToolButton>
+#include <QVBoxLayout>
+#include <QWebEngineFindTextResult>
 #include <QWebEngineHistory>
+#include <QWebEnginePage>
 
 #include "browser/tabmanager.hpp"
 #include "browser/webview.hpp"
 #include "storage/settings.hpp"
+#include "ui/tabbar.hpp"
+#include "ui/toolbar.hpp"
 
 MainWindow::MainWindow(Settings *settings, TabManager *tabs, QWidget *parent)
     : QMainWindow(parent), m_settings(settings), m_tabs(tabs)
@@ -19,113 +24,234 @@ MainWindow::MainWindow(Settings *settings, TabManager *tabs, QWidget *parent)
     setWindowTitle("Moch");
     resize(1280, 800);
 
-    buildTabBar();
-    buildToolbar();
+    m_tabBar = new TabBar(this);
+    m_toolbar = new Toolbar(this);
+    m_findBar = buildFindBar();
+    m_findBar->hide();
 
-    setCentralWidget(m_tabs->widget());
+    auto *container = new QWidget(this);
+    auto *layout = new QVBoxLayout(container);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+    layout->addWidget(m_tabBar);
+    layout->addWidget(m_toolbar);
+    layout->addWidget(m_findBar);
+    layout->addWidget(m_tabs->widget());
+    setCentralWidget(container);
+
     connectTabs();
+    buildMenuButton();
+    buildShortcuts();
     applyTheme();
 }
 
-void MainWindow::buildTabBar()
+QWidget *MainWindow::buildFindBar()
 {
-    m_tabBar = new QTabBar();
-    m_tabBar->setTabsClosable(true);
-    m_tabBar->setMovable(true);
-    m_tabBar->setExpanding(false);
-    m_tabBar->setUsesScrollButtons(true);
-    m_tabBar->setElideMode(Qt::ElideRight);
+    m_findInput = new QLineEdit(this);
+    m_findInput->setObjectName("findInput");
+    m_findInput->setPlaceholderText("Find in page");
+    m_findInput->setClearButtonEnabled(true);
+    connect(m_findInput, &QLineEdit::textChanged, this, [this](const QString &text) {
+        if (auto *page = m_tabs->currentView() ? m_tabs->currentView()->page() : nullptr)
+            page->findText(text);
+    });
+    connect(m_findInput, &QLineEdit::returnPressed, this, [this] { findNext(true); });
 
-    connect(m_tabBar, &QTabBar::currentChanged, this, [this](int index) {
-        m_tabs->setCurrentIndex(index);
-        updateNavigationState();
-    });
-    connect(m_tabBar, &QTabBar::tabCloseRequested, this, [this](int index) {
-        m_tabs->closeTab(index);
-    });
-}
+    m_findStatus = new QLabel(this);
 
-void MainWindow::buildToolbar()
-{
-    QToolBar *toolbar = new QToolBar();
-    toolbar->setMovable(false);
-    toolbar->setObjectName("navToolbar");
+    auto *previous = new QToolButton(this);
+    previous->setText("↑");
+    connect(previous, &QToolButton::clicked, this, [this] { findNext(false); });
 
-    m_backAction = toolbar->addAction("←");
-    m_forwardAction = toolbar->addAction("→");
-    m_reloadAction = toolbar->addAction("⟳");
-    connect(m_backAction, &QAction::triggered, this, [this] {
-        if (auto *v = m_tabs->currentView())
-            v->back();
-    });
-    connect(m_forwardAction, &QAction::triggered, this, [this] {
-        if (auto *v = m_tabs->currentView())
-            v->forward();
-    });
-    connect(m_reloadAction, &QAction::triggered, this, [this] {
-        if (auto *v = m_tabs->currentView())
-            v->reload();
-    });
+    auto *next = new QToolButton(this);
+    next->setText("↓");
+    connect(next, &QToolButton::clicked, this, [this] { findNext(true); });
 
-    m_addressBar = new QLineEdit();
-    m_addressBar->setPlaceholderText("Search or enter address");
-    m_addressBar->setClearButtonEnabled(true);
-    m_addressBar->setObjectName("addressBar");
-    connect(m_addressBar, &QLineEdit::returnPressed, this, [this] {
-        m_tabs->navigateCurrent(m_addressBar->text());
-        m_addressBar->clearFocus();
-    });
-    toolbar->addWidget(m_addressBar);
+    auto *close = new QToolButton(this);
+    close->setText("✕");
+    connect(close, &QToolButton::clicked, this, &MainWindow::toggleFindBar);
 
-    QToolButton *newTabButton = new QToolButton();
-    newTabButton->setText("+");
-    connect(newTabButton, &QToolButton::clicked, this, [this] {
-        m_tabs->addTab(QUrl("moch://newtab"));
-    });
-    toolbar->addWidget(newTabButton);
-
-    addToolBar(toolbar);
+    auto *bar = new QWidget(this);
+    bar->setObjectName("findBar");
+    auto *layout = new QHBoxLayout(bar);
+    layout->setContentsMargins(8, 2, 8, 2);
+    layout->setSpacing(4);
+    layout->addWidget(m_findInput, 1);
+    layout->addWidget(m_findStatus);
+    layout->addWidget(previous);
+    layout->addWidget(next);
+    layout->addWidget(close);
+    return bar;
 }
 
 void MainWindow::connectTabs()
 {
+    connect(m_tabBar, &TabBar::currentTabChanged, this, [this](int index) {
+        m_tabs->setCurrentIndex(index);
+        updateNavigationState();
+    });
+    connect(m_tabBar, &TabBar::tabCloseRequested, this, [this](int index) {
+        m_tabs->closeTab(index);
+    });
+    connect(m_tabBar, &TabBar::newTabRequested, this,
+            [this] { m_tabs->addTab(QUrl("moch://newtab")); });
+    connect(m_tabBar, &TabBar::tabDuplicateRequested, this, [this](int index) {
+        if (const WebView *view = m_tabs->view(index))
+            m_tabs->addTab(view->url());
+    });
+    connect(m_tabBar, &TabBar::tabsCloseOthersRequested, this, [this](int index) {
+        for (int i = m_tabs->count() - 1; i >= 0; --i)
+            if (i != index)
+                m_tabs->closeTab(i);
+    });
+    connect(m_tabBar, &TabBar::tabsCloseRightRequested, this, [this](int index) {
+        for (int i = m_tabs->count() - 1; i > index; --i)
+            m_tabs->closeTab(i);
+    });
+
+    connect(m_toolbar, &Toolbar::backRequested, this, [this] {
+        if (auto *view = m_tabs->currentView())
+            view->back();
+    });
+    connect(m_toolbar, &Toolbar::forwardRequested, this, [this] {
+        if (auto *view = m_tabs->currentView())
+            view->forward();
+    });
+    connect(m_toolbar, &Toolbar::reloadRequested, this, [this] {
+        if (auto *view = m_tabs->currentView())
+            view->reload();
+    });
+    connect(m_toolbar, &Toolbar::stopRequested, this, [this] {
+        if (auto *view = m_tabs->currentView())
+            view->stop();
+    });
+    connect(m_toolbar, &Toolbar::navigateRequested, this,
+            [this](const QString &input) { m_tabs->navigateCurrent(input); });
+    connect(m_toolbar, &Toolbar::bookmarkToggleRequested, this, [this] {
+        if (auto *view = m_tabs->currentView())
+            emit bookmarkToggleRequested(view->url());
+    });
+
     connect(m_tabs, &TabManager::tabsChanged, this, [this] {
-        m_tabBar->blockSignals(true);
-        while (m_tabBar->count() > m_tabs->count())
-            m_tabBar->removeTab(m_tabBar->count() - 1);
+        m_tabBar->removeLastTabs(m_tabs->count());
         for (int i = 0; i < m_tabs->count(); ++i) {
             const TabInfo info = m_tabs->info(i);
             const QString label = info.title.isEmpty() ? tr("New Tab") : info.title;
             if (i < m_tabBar->count())
-                m_tabBar->setTabText(i, label);
+                m_tabBar->setTab(i, label, info.icon);
             else
-                m_tabBar->addTab(label);
-            if (!info.icon.isNull())
-                m_tabBar->setTabIcon(i, info.icon);
+                m_tabBar->appendTab(label);
         }
         m_tabBar->setCurrentIndex(m_tabs->currentIndex());
-        m_tabBar->blockSignals(false);
-    });
-    connect(m_tabs, &TabManager::currentChanged, this, [this](int index) {
-        m_tabBar->setCurrentIndex(index);
         updateNavigationState();
     });
-    connect(m_tabs, &TabManager::tabUrlChanged, this, [this](int, const QUrl &url) {
-        if (m_tabs->currentView() && m_tabs->currentView()->url() == url)
-            m_addressBar->setText(url.toString());
+    connect(m_tabs, &TabManager::currentChanged, this, [this](int) { updateNavigationState(); });
+    connect(m_tabs, &TabManager::tabUrlChanged, this, [this](int, const QUrl &) {
         updateNavigationState();
     });
-    connect(m_tabs, &TabManager::lastTabClosed, this, [this] {
-        m_tabs->addTab(QUrl("moch://newtab"));
+    connect(m_tabs, &TabManager::tabLoadProgress, this, [this](int index, int progress) {
+        if (index == m_tabs->currentIndex())
+            m_toolbar->setLoading(progress < 100);
+    });
+    connect(m_tabs, &TabManager::lastTabClosed, this,
+            [this] { m_tabs->addTab(QUrl("moch://newtab")); });
+}
+
+void MainWindow::buildMenuButton()
+{
+    auto *menu = new QMenu(this);
+    QAction *newWindow = menu->addAction("New Window\tCtrl+N");
+    connect(newWindow, &QAction::triggered, this, &MainWindow::newWindowRequested);
+    m_toolbar->setSettingsMenu(menu);
+}
+
+void MainWindow::buildShortcuts()
+{
+    const auto shortcut = [this](const QKeySequence &key, auto &&handler) {
+        auto *action = new QShortcut(key, this);
+        connect(action, &QShortcut::activated, this, std::forward<decltype(handler)>(handler));
+    };
+
+    shortcut(QKeySequence("Ctrl+T"), [this] { m_tabs->addTab(QUrl("moch://newtab")); });
+    shortcut(QKeySequence("Ctrl+W"), [this] { m_tabs->closeTab(m_tabs->currentIndex()); });
+    shortcut(QKeySequence("Ctrl+L"), [this] {
+        m_toolbar->addressBar()->setFocus();
+        m_toolbar->addressBar()->selectAll();
+    });
+    shortcut(QKeySequence("Ctrl+R"), [this] {
+        if (auto *view = m_tabs->currentView())
+            view->reload();
+    });
+    shortcut(QKeySequence("F5"), [this] {
+        if (auto *view = m_tabs->currentView())
+            view->reload();
+    });
+    shortcut(QKeySequence("Ctrl+Shift+T"), [this] { m_tabs->reopenClosedTab(); });
+    shortcut(QKeySequence("Ctrl+Tab"), [this] {
+        if (m_tabs->count() > 0)
+            m_tabs->setCurrentIndex((m_tabs->currentIndex() + 1) % m_tabs->count());
+    });
+    shortcut(QKeySequence("Ctrl+N"), [this] { emit newWindowRequested(); });
+    shortcut(QKeySequence("Ctrl+D"), [this] {
+        if (auto *view = m_tabs->currentView())
+            emit bookmarkToggleRequested(view->url());
+    });
+    shortcut(QKeySequence("Ctrl+F"), [this] { toggleFindBar(); });
+    shortcut(QKeySequence("Alt+Left"), [this] {
+        if (auto *view = m_tabs->currentView())
+            view->back();
+    });
+    shortcut(QKeySequence("Alt+Right"), [this] {
+        if (auto *view = m_tabs->currentView())
+            view->forward();
+    });
+    shortcut(QKeySequence("F11"), [this] {
+        isFullScreen() ? showNormal() : showFullScreen();
+    });
+    shortcut(QKeySequence(Qt::Key_Escape), [this] {
+        if (m_findBar->isVisible())
+            toggleFindBar();
+        else if (auto *view = m_tabs->currentView())
+            view->stop();
     });
 }
 
 void MainWindow::updateNavigationState()
 {
-    m_backAction->setEnabled(m_tabs->canGoBack());
-    m_forwardAction->setEnabled(m_tabs->canGoForward());
-    if (m_tabs->currentView())
-        m_addressBar->setText(m_tabs->currentView()->url().toString());
+    const WebView *view = m_tabs->currentView();
+    m_toolbar->setNavigationEnabled(m_tabs->canGoBack(), m_tabs->canGoForward());
+    if (view) {
+        m_toolbar->setAddress(view->url().toString());
+        m_toolbar->setSecurity(view->url());
+        m_toolbar->setLoading(view->isLoading());
+    }
+}
+
+void MainWindow::toggleFindBar()
+{
+    if (m_findBar->isVisible()) {
+        m_findBar->hide();
+        m_findStatus->clear();
+        if (auto *page = m_tabs->currentView() ? m_tabs->currentView()->page() : nullptr)
+            page->findText(QString());
+        if (auto *view = m_tabs->currentView())
+            view->setFocus();
+    } else {
+        m_findBar->show();
+        m_findInput->setFocus();
+        m_findInput->selectAll();
+    }
+}
+
+void MainWindow::findNext(bool forward)
+{
+    if (auto *page = m_tabs->currentView() ? m_tabs->currentView()->page() : nullptr) {
+        const QWebEnginePage::FindFlags flags =
+                forward ? QWebEnginePage::FindFlags() : QWebEnginePage::FindBackward;
+        page->findText(m_findInput->text(), flags, [this](const QWebEngineFindTextResult &result) {
+            m_findStatus->setText(result.numberOfMatches() > 0 ? QString() : tr("No matches"));
+        });
+    }
 }
 
 void MainWindow::applyTheme()
@@ -133,37 +259,6 @@ void MainWindow::applyTheme()
     QFile qss(":/themes/" + m_settings->theme() + ".qss");
     if (qss.open(QIODevice::ReadOnly))
         setStyleSheet(QString::fromUtf8(qss.readAll()));
-}
-
-void MainWindow::keyPressEvent(QKeyEvent *event)
-{
-    const QKeySequence seq(int(event->modifiers()) | event->key());
-    if (seq == QKeySequence("Ctrl+T")) {
-        m_tabs->addTab(QUrl("moch://newtab"));
-        return;
-    }
-    if (seq == QKeySequence("Ctrl+W")) {
-        m_tabs->closeTab(m_tabs->currentIndex());
-        return;
-    }
-    if (seq == QKeySequence("Ctrl+L")) {
-        m_addressBar->setFocus();
-        m_addressBar->selectAll();
-        return;
-    }
-    if (seq == QKeySequence("Ctrl+R") || seq == QKeySequence("F5")) {
-        if (auto *v = m_tabs->currentView())
-            v->reload();
-        return;
-    }
-    if (seq == QKeySequence("Ctrl+Shift+T")) {
-        m_tabs->reopenClosedTab();
-        return;
-    }
-    if (seq == QKeySequence("Ctrl+Tab")) {
-        const int next = (m_tabs->currentIndex() + 1) % m_tabs->count();
-        m_tabs->setCurrentIndex(next);
-        return;
-    }
-    QMainWindow::keyPressEvent(event);
+    else
+        qWarning("moch: theme %s not found", qPrintable(m_settings->theme()));
 }

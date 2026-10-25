@@ -15,6 +15,7 @@ public:
     void start();
 
 private:
+    void openWindow();
     Settings *m_settings = nullptr;
     TabManager *m_tabs = nullptr;
     MainWindow *m_window = nullptr;

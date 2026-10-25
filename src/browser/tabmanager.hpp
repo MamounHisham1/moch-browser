@@ -3,6 +3,7 @@
 #include <QIcon>
 #include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QUrl>
 
 class QStackedWidget;
@@ -56,7 +57,7 @@ private:
 
     Settings *m_settings = nullptr;
     QWebEngineProfile *m_profile = nullptr;
-    QStackedWidget *m_stack = nullptr;
+    QPointer<QStackedWidget> m_stack;
     QList<WebView *> m_views;
     QList<QUrl> m_closedUrls;
     int m_current = -1;

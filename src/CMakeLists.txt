@@ -1,12 +1,21 @@
 qt_add_executable(moch
     main.cpp
+    ai/provider.cpp ai/provider.hpp
+    ai/openaicompatprovider.cpp ai/openaicompatprovider.hpp
+    ai/providerregistry.cpp ai/providerregistry.hpp
     app/applicationcontroller.cpp app/applicationcontroller.hpp
     browser/mochurlscheme.cpp browser/mochurlscheme.hpp
     browser/tabmanager.cpp browser/tabmanager.hpp
     browser/urlresolver.cpp browser/urlresolver.hpp
     browser/webview.cpp browser/webview.hpp
     ui/mainwindow.cpp ui/mainwindow.hpp
+    ui/tabbar.cpp ui/tabbar.hpp
+    ui/toolbar.cpp ui/toolbar.hpp
     storage/settings.cpp storage/settings.hpp
+    security/contentsanitizer.cpp security/contentsanitizer.hpp
+    security/riskclassifier.cpp security/riskclassifier.hpp
+    security/secretredactor.cpp security/secretredactor.hpp
+    security/permissionpolicy.cpp security/permissionpolicy.hpp
     resources/moch.qrc
 )
 
