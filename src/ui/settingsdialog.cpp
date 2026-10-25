@@ -3,10 +3,8 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
-#include <QFile>
 #include <QFormLayout>
 #include <QLineEdit>
-#include <QMessageBox>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -115,19 +113,8 @@ void SettingsDialog::save()
     m_settings->set("privacy.send_page_content", m_sendPageContent->isChecked());
 
     const QString key = m_apiKey->text().trimmed();
-    if (!key.isEmpty()) {
-        const QString path = m_settings->secretPath();
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly)) {
-            QMessageBox::warning(this, tr("Moch"),
-                                 tr("Could not store the API key at %1").arg(path));
-        } else {
-            file.write(key.toUtf8());
-            file.close();
-            file.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
-            m_settings->invalidateApiKey();
-        }
-    }
+    if (!key.isEmpty())
+        m_settings->saveApiKey(key);
     if (themeDidChange)
         emit themeChanged(theme);
     accept();

@@ -2,6 +2,7 @@ qt_add_executable(moch
     main.cpp
     ai/provider.cpp ai/provider.hpp
     ai/openaicompatprovider.cpp ai/openaicompatprovider.hpp
+    ai/modelcatalog.cpp ai/modelcatalog.hpp
     ai/providerregistry.cpp ai/providerregistry.hpp
     app/applicationcontroller.cpp app/applicationcontroller.hpp
     browser/bookmarkstore.cpp browser/bookmarkstore.hpp
@@ -9,6 +10,8 @@ qt_add_executable(moch
     browser/historystore.cpp browser/historystore.hpp
     browser/mochurlscheme.cpp browser/mochurlscheme.hpp
     browser/newtabbridge.cpp browser/newtabbridge.hpp
+    browser/openrouterauth.cpp browser/openrouterauth.hpp
+    browser/setupbridge.cpp browser/setupbridge.hpp
     browser/tabmanager.cpp browser/tabmanager.hpp
     browser/urlresolver.cpp browser/urlresolver.hpp
     browser/webview.cpp browser/webview.hpp

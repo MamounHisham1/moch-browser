@@ -10,6 +10,7 @@
 #include "browser/bookmarkstore.hpp"
 #include "browser/historystore.hpp"
 #include "browser/newtabbridge.hpp"
+#include "browser/setupbridge.hpp"
 #include "browser/urlresolver.hpp"
 #include "browser/webview.hpp"
 #include "storage/settings.hpp"
@@ -117,6 +118,11 @@ int TabManager::addTab(const QUrl &url, bool background)
             emit openUrlRequested(QUrl(url));
         });
         channel->registerObject("mochBridge", bridge);
+        auto *setup = new SetupBridge(m_settings, view, channel);
+        connect(setup, &SetupBridge::finished, view, [view] {
+            view->load(QUrl("moch://newtab"));
+        });
+        channel->registerObject("mochSetup", setup);
         view->page()->setWebChannel(channel);
     }
 

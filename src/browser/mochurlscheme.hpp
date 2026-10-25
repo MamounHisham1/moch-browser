@@ -12,4 +12,5 @@ public:
 
 private:
     QByteArray newTabHtml() const;
+    QByteArray setupHtml() const;
 };

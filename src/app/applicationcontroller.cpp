@@ -43,7 +43,10 @@ void ApplicationController::openWindow()
     MainWindow *window = new MainWindow(m_settings, tabs, m_history, m_bookmarks, m_downloads);
     window->setAttribute(Qt::WA_DeleteOnClose);
     window->show();
-    tabs->addTab(QUrl("moch://newtab"));
+    const QUrl firstPage = m_settings->get("setup_complete", false).toBool()
+                               ? QUrl("moch://newtab")
+                               : QUrl("moch://setup");
+    tabs->addTab(firstPage);
     connect(window, &MainWindow::newWindowRequested, this, &ApplicationController::openWindow);
 
     if (!m_window) {

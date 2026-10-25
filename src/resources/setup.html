@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Welcome to Moch</title>
+<style>
+:root {
+  --bg: #101114; --panel: #17181c; --panel2: #1d1f24; --border: #26282e;
+  --text: #eceef2; --muted: #9a9da6; --accent: #5b8def; --accent2: #7aa5ff;
+  --ok: #6fbf73; --danger: #e06c6c; --hover: #22242a;
+}
+body.light {
+  --bg: #f4f5f8; --panel: #ffffff; --panel2: #f0f1f5; --border: #e0e1e7;
+  --text: #17181c; --muted: #6a6c76; --accent: #3d6ea5; --accent2: #2f5c92;
+  --ok: #3f9e46; --danger: #c74f4f; --hover: #e8e9ef;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: radial-gradient(1200px 600px at 50% -10%, rgba(91,141,239,.13), transparent 60%), var(--bg);
+  color: var(--text);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  display: flex; flex-direction: column; align-items: center;
+  overflow-y: auto;
+}
+.wrap { width: min(980px, 92vw); margin: 0 auto; padding: 40px 0 60px; }
+
+.steps { display: flex; gap: 10px; align-items: center; margin-bottom: 34px; }
+.step-dot { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
+.step-dot .n {
+  width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; background: var(--panel2); border: 1px solid var(--border);
+  font-size: 12px; font-weight: 600;
+}
+.step-dot.active { color: var(--text); }
+.step-dot.active .n { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step-dot.done .n { background: var(--ok); border-color: var(--ok); color: #fff; }
+.steps .line { flex: 1; height: 1px; background: var(--border); }
+
+h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; }
+.sub { color: var(--muted); margin-top: 8px; font-size: 15px; line-height: 1.5; }
+.head { margin-bottom: 26px; }
+
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 900px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+.card {
+  position: relative; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px 14px 14px; cursor: pointer; user-select: none;
+  transition: border-color .15s, transform .12s, background .15s;
+}
+.card:hover { background: var(--hover); transform: translateY(-1px); }
+.card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.card .emoji { font-size: 24px; }
+.card .t { font-weight: 600; font-size: 14px; margin-top: 8px; }
+.card .d { color: var(--muted); font-size: 12px; margin-top: 3px; line-height: 1.35; }
+.card .check {
+  position: absolute; top: 10px; right: 10px; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px;
+  display: none; align-items: center; justify-content: center;
+}
+.card.selected .check { display: flex; }
+
+.uc-section { margin-bottom: 22px; }
+.uc-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.uc-head .t { font-weight: 600; font-size: 15px; }
+.uc-head .d { color: var(--muted); font-size: 12.5px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: flex; align-items: center; gap: 8px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px;
+  transition: border-color .15s, background .15s;
+}
+.chip .name { font-size: 13.5px; font-weight: 500; }
+.chip button {
+  background: var(--panel2); color: var(--accent2); border: 1px solid var(--border);
+  border-radius: 7px; font-size: 12px; padding: 4px 9px; cursor: pointer; font-weight: 600;
+}
+.chip button:hover { background: var(--hover); }
+.chip .tick {
+  width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: transparent; transition: all .15s;
+}
+.chip .tick:hover { border-color: var(--accent); }
+.chip.signed .tick { background: var(--ok); border-color: var(--ok); color: #fff; }
+.chip.signed { border-color: rgba(111,191,115,.45); }
+.hint { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+
+.modes { display: flex; gap: 8px; margin-bottom: 18px; }
+.mode {
+  flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 13px 15px; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.mode:hover { background: var(--hover); }
+.mode.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.mode .t { font-weight: 600; font-size: 14px; }
+.mode .d { color: var(--muted); font-size: 12px; margin-top: 3px; line-height: 1.35; }
+
+.search {
+  width: 100%; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 11px 14px; color: var(--text); font-size: 14px;
+  outline: none; margin-bottom: 12px;
+}
+.search:focus { border-color: var(--accent); }
+
+.models {
+  max-height: 320px; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--panel);
+}
+.models::-webkit-scrollbar { width: 10px; }
+.models::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+.mgroup { padding: 8px 14px 4px; color: var(--muted); font-size: 11.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1px; position: sticky; top: 0;
+  background: var(--panel); }
+.mrow {
+  display: flex; align-items: center; gap: 10px; padding: 9px 14px; cursor: pointer;
+  border-top: 1px solid var(--border);
+}
+.mrow:hover { background: var(--hover); }
+.mrow.selected { background: rgba(91,141,239,.13); }
+.mrow .id { font-size: 13.5px; font-weight: 500; flex: 1; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.mrow .ctx { color: var(--muted); font-size: 11.5px; }
+.badge {
+  font-size: 10.5px; font-weight: 700; border-radius: 6px; padding: 2px 7px;
+  background: rgba(111,191,115,.18); color: var(--ok);
+}
+.empty { padding: 24px; color: var(--muted); text-align: center; font-size: 13.5px; }
+
+.keyrow { display: flex; gap: 8px; margin-top: 14px; }
+.keyrow input {
+  flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 11px 14px; color: var(--text); font-size: 14px; outline: none;
+}
+.keyrow input:focus { border-color: var(--accent); }
+.btn {
+  background: var(--accent); color: #fff; border: none; border-radius: 10px;
+  padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: filter .15s;
+}
+.btn:hover { filter: brightness(1.1); }
+.btn.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+.btn.ghost { background: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--text); background: var(--hover); }
+.note { font-size: 12.5px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+.status { font-size: 13px; margin-top: 10px; min-height: 18px; }
+.status.ok { color: var(--ok); }
+.status.err { color: var(--danger); }
+
+.footer { display: flex; justify-content: space-between; align-items: center; margin-top: 34px; }
+.nav { display: flex; gap: 10px; }
+
+.summary { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px 20px; margin-top: 6px; }
+.summary .row { display: flex; gap: 12px; padding: 7px 0; font-size: 14px;
+  border-bottom: 1px solid var(--border); }
+.summary .row:last-child { border-bottom: none; }
+.summary .k { color: var(--muted); width: 130px; flex: none; }
+.summary .v { flex: 1; }
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="steps">
+    <div class="step-dot" id="dot1"><span class="n">1</span> What for</div>
+    <div class="line"></div>
+    <div class="step-dot" id="dot2"><span class="n">2</span> Your sites</div>
+    <div class="line"></div>
+    <div class="step-dot" id="dot3"><span class="n">3</span> AI model</div>
+    <div class="line"></div>
+    <div class="step-dot" id="dot4"><span class="n">4</span> Done</div>
+  </div>
+
+  <section id="step1">
+    <div class="head">
+      <h1>What do you want Moch to help with?</h1>
+      <p class="sub">Pick everything that applies. Moch uses this to set up your sites and to
+      give the agent context about your goals. You can change this any time.</p>
+    </div>
+    <div class="grid" id="useGrid"></div>
+    <div class="footer">
+      <button class="btn ghost" id="skipUses">Skip for now</button>
+      <div class="nav"><button class="btn" id="toStep2">Continue</button></div>
+    </div>
+  </section>
+
+  <section id="step2" class="hidden">
+    <div class="head">
+      <h1>Sign in to your sites</h1>
+      <p class="sub">For each site you want the agent to work with, hit <b>Sign in</b> — it opens
+      the real login page right here in Moch, so your password stays between you and the site.
+      When you come back, tick the check to mark it ready. Any site you skip still works; you can
+      also just browse to it later.</p>
+    </div>
+    <div id="platformSections"></div>
+    <div class="footer">
+      <button class="btn ghost" id="backTo1">Back</button>
+      <div class="nav"><button class="btn" id="toStep3">Continue</button></div>
+    </div>
+  </section>
+
+  <section id="step3" class="hidden">
+    <div class="head">
+      <h1>Pick your AI model</h1>
+      <p class="sub">OpenRouter gives you one key for every major model — OpenAI, Anthropic,
+      Google, Meta, Mistral, DeepSeek and more. Or connect a provider directly, including local
+      ones like Ollama.</p>
+    </div>
+    <div class="modes">
+      <div class="mode selected" id="modeOpenRouter">
+        <div class="t">OpenRouter <span class="badge" style="background:rgba(91,141,239,.15);color:var(--accent2)">Recommended</span></div>
+        <div class="d">One key, all models. Free models available.</div>
+      </div>
+      <div class="mode" id="modeDirect">
+        <div class="t">Direct provider</div>
+        <div class="d">OpenAI, Groq, DeepSeek, Ollama, LM Studio…</div>
+      </div>
+    </div>
+
+    <div id="openRouterPane">
+      <input class="search" id="modelSearch" type="text" placeholder="Search 300+ models — try “claude”, “gpt”, “free”…">
+      <div class="models" id="modelList"><div class="empty">Loading models…</div></div>
+      <div class="keyrow">
+        <input id="orKey" type="password" placeholder="Paste your OpenRouter key (sk-or-…)">
+        <button class="btn secondary" id="orOauth">Sign in with OpenRouter</button>
+        <button class="btn" id="orSave">Save key</button>
+      </div>
+      <p class="note">No account yet? Create a free one at
+      <b>openrouter.ai</b> — the sign-in button below handles it too. Keys are stored locally
+      with owner-only permissions and never leave this machine except to call the model
+      provider you chose.</p>
+      <div class="status" id="orStatus"></div>
+    </div>
+
+    <div id="directPane" class="hidden">
+      <div class="chips" id="directProviders" style="margin-bottom:14px"></div>
+      <div class="keyrow">
+        <input id="dBaseUrl" type="text" placeholder="Base URL, e.g. https://api.groq.com/openai/v1">
+        <input id="dModel" type="text" placeholder="Model id, e.g. llama-3.3-70b-versatile">
+      </div>
+      <div class="keyrow">
+        <input id="dKey" type="password" placeholder="API key (leave empty for local providers)">
+        <button class="btn" id="dSave">Save</button>
+      </div>
+      <div class="status" id="dStatus"></div>
+    </div>
+
+    <div class="footer">
+      <button class="btn ghost" id="backTo2">Back</button>
+      <div class="nav"><button class="btn ghost" id="skipAi">Skip for now</button>
+      <button class="btn" id="toStep4">Continue</button></div>
+    </div>
+  </section>
+
+  <section id="step4" class="hidden">
+    <div class="head">
+      <h1>You're set.</h1>
+      <p class="sub">Here's what Moch will do for you. Open the sidebar with
+      <b>Ctrl+I</b> to chat about any page, or type <b>/ask</b> + a task and watch the agent
+      work through it step by step — it asks before doing anything sensitive.</p>
+    </div>
+    <div class="summary" id="summary"></div>
+    <div class="footer">
+      <button class="btn ghost" id="backTo3">Back</button>
+      <div class="nav"><button class="btn" id="enterMoch">Enter Moch</button></div>
+    </div>
+  </section>
+</div>
+
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+let bridge = null;
+const state = {
+  step: 1,
+  useCases: [],
+  selected: new Set(),
+  signed: new Set(),
+  models: [],
+  model: null,
+  mode: 'openrouter',
+  direct: null,
+};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function setStep(n) {
+  state.step = n;
+  for (let i = 1; i <= 4; i++) {
+    $('step' + i).classList.toggle('hidden', i !== n);
+    const dot = $('dot' + i);
+    dot.classList.toggle('active', i === n);
+    dot.classList.toggle('done', i < n);
+  }
+  window.scrollTo(0, 0);
+}
+
+function renderUses() {
+  const grid = $('useGrid');
+  grid.textContent = '';
+  for (const uc of state.useCases) {
+    const card = document.createElement('div');
+    card.className = 'card' + (state.selected.has(uc.id) ? ' selected' : '');
+    const emoji = document.createElement('div');
+    emoji.className = 'emoji'; emoji.textContent = uc.emoji;
+    const t = document.createElement('div'); t.className = 't'; t.textContent = uc.title;
+    const d = document.createElement('div'); d.className = 'd'; d.textContent = uc.description;
+    const check = document.createElement('div'); check.className = 'check'; check.textContent = '✓';
+    card.append(emoji, t, d, check);
+    card.addEventListener('click', () => {
+      state.selected.has(uc.id) ? state.selected.delete(uc.id) : state.selected.add(uc.id);
+      card.classList.toggle('selected');
+      bridge.setSelectedUseCases(Array.from(state.selected));
+    });
+    grid.append(card);
+  }
+}
+
+function renderPlatforms() {
+  const host = $('platformSections');
+  host.textContent = '';
+  const chosen = state.useCases.filter(uc => state.selected.has(uc.id));
+  if (!chosen.length) {
+    const p = document.createElement('p');
+    p.className = 'sub';
+    p.textContent = 'No categories selected — you picked “Something else” or skipped. You can browse to any site and still ask Moch about it.';
+    host.append(p);
+    return;
+  }
+  for (const uc of chosen) {
+    const section = document.createElement('div');
+    section.className = 'uc-section';
+    const head = document.createElement('div'); head.className = 'uc-head';
+    const t = document.createElement('span'); t.className = 't'; t.textContent = uc.emoji + ' ' + uc.title;
+    const d = document.createElement('span'); d.className = 'd'; d.textContent = uc.description;
+    head.append(t, d);
+    const chips = document.createElement('div'); chips.className = 'chips';
+    for (const p of uc.platforms) {
+      const chip = document.createElement('div');
+      chip.className = 'chip' + (state.signed.has(p.id) ? ' signed' : '');
+      const tick = document.createElement('div'); tick.className = 'tick'; tick.textContent = '✓';
+      tick.title = 'Mark as signed in';
+      tick.addEventListener('click', () => {
+        const on = !state.signed.has(p.id);
+        on ? state.signed.add(p.id) : state.signed.delete(p.id);
+        chip.classList.toggle('signed', on);
+        bridge.setPlatformSignedIn(p.id, on);
+      });
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = p.name;
+      const btn = document.createElement('button'); btn.textContent = 'Sign in';
+      btn.addEventListener('click', () => bridge.requestSignIn(p.id));
+      chip.append(tick, name, btn);
+      chips.append(chip);
+    }
+    section.append(head, chips);
+    host.append(section);
+  }
+}
+
+function renderModels(filter) {
+  const list = $('modelList');
+  list.textContent = '';
+  const q = (filter || '').toLowerCase();
+  const seen = new Set();
+  let shown = 0;
+  const groups = {};
+  for (const m of state.models) {
+    if (q && !(m.id + ' ' + m.name).toLowerCase().includes(q)) continue;
+    (groups[m.provider] = groups[m.provider] || []).push(m);
+  }
+  const providers = Object.keys(groups).sort();
+  for (const provider of providers) {
+    if (seen.has(provider)) continue;
+    seen.add(provider);
+    const head = document.createElement('div'); head.className = 'mgroup'; head.textContent = provider;
+    list.append(head);
+    for (const m of groups[provider].sort((a, b) => (a.free === b.free) ? a.id.localeCompare(b.id) : (a.free ? -1 : 1))) {
+      shown++;
+      const row = document.createElement('div');
+      row.className = 'mrow' + (state.model && state.model.id === m.id ? ' selected' : '');
+      const id = document.createElement('span'); id.className = 'id'; id.textContent = m.id;
+      const ctx = document.createElement('span'); ctx.className = 'ctx';
+      ctx.textContent = m.context > 0 ? Math.round(m.context / 1000) + 'k ctx' : '';
+      row.append(id);
+      if (m.free) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = 'FREE'; row.append(b); }
+      row.append(ctx);
+      row.addEventListener('click', () => {
+        state.model = m;
+        bridge.saveAiConfig('openai-compat', 'https://openrouter.ai/api/v1', m.id);
+        renderModels($('modelSearch').value);
+      });
+      list.append(row);
+    }
+  }
+  if (!shown) {
+    const e = document.createElement('div'); e.className = 'empty';
+    e.textContent = 'No models match. You can type any model id in Direct mode.';
+    list.append(e);
+  }
+}
+
+const directProviders = [
+  {name: 'OpenAI', url: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: true},
+  {name: 'DeepSeek', url: 'https://api.deepseek.com', model: 'deepseek-chat', key: true},
+  {name: 'Groq', url: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', key: true},
+  {name: 'Mistral', url: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', key: true},
+  {name: 'Together', url: 'https://api.together.xyz/v1', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', key: true},
+  {name: 'xAI', url: 'https://api.x.ai/v1', model: 'grok-3-mini', key: true},
+  {name: 'Ollama (local)', url: 'http://localhost:11434/v1', model: 'llama3.1', key: false},
+  {name: 'LM Studio (local)', url: 'http://localhost:1234/v1', model: '', key: false},
+  {name: 'Custom', url: '', model: '', key: true},
+];
+
+function renderDirectProviders() {
+  const host = $('directProviders');
+  host.textContent = '';
+  for (const p of directProviders) {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    const name = document.createElement('span'); name.className = 'name'; name.textContent = p.name;
+    const btn = document.createElement('button'); btn.textContent = 'Use';
+    btn.addEventListener('click', () => {
+      $('dBaseUrl').value = p.url;
+      $('dModel').value = p.model;
+    });
+    chip.append(name, btn);
+    host.append(chip);
+  }
+}
+
+function renderSummary() {
+  const host = $('summary');
+  host.textContent = '';
+  const addRow = (k, v) => {
+    const row = document.createElement('div'); row.className = 'row';
+    const key = document.createElement('span'); key.className = 'k'; key.textContent = k;
+    const val = document.createElement('span'); val.className = 'v'; val.textContent = v;
+    row.append(key, val); host.append(row);
+  };
+  const chosen = state.useCases.filter(uc => state.selected.has(uc.id));
+  addRow('Focus', chosen.length ? chosen.map(u => u.title).join(', ') : 'Everything');
+  const signed = Array.from(state.signed).length;
+  addRow('Sites signed in', signed ? signed + ' ready' : 'None yet — fine, browse anytime');
+  let ai = 'Not set up yet';
+  try {
+    const s = JSON.parse(bridge.getAiSummary());
+    if (s.model) ai = s.model + (s.hasKey ? '  ·  key saved' : '  ·  no key yet');
+  } catch (e) {}
+  addRow('AI model', ai);
+  addRow('Privacy', 'Passwords and cookies stay in Moch, never sent to the model');
+}
+
+new QWebChannel(qt.webChannelTransport, channel => {
+  bridge = channel.objects.mochSetup;
+  document.body.classList.toggle('light', bridge.theme() === 'light');
+  state.useCases = bridge.getUseCases();
+  state.selected = new Set(bridge.getSelectedUseCases());
+  state.signed = new Set(Object.keys(bridge.getPlatformStates()).filter(k => bridge.getPlatformStates()[k]));
+  renderUses();
+
+  bridge.modelsReady.connect(models => {
+    state.models = models;
+    if (state.step === 3 && state.mode === 'openrouter') renderModels($('modelSearch').value);
+    $('orStatus').className = 'status ok';
+    $('orStatus').textContent = models.length + ' models loaded.';
+  });
+  bridge.modelsFailed.connect(reason => {
+    $('orStatus').className = 'status err';
+    $('orStatus').textContent = 'Could not fetch the live catalog (' + reason + '). Showing a built-in list.';
+  });
+  bridge.oauthResult.connect((ok, message) => {
+    $('orStatus').className = 'status ' + (ok ? 'ok' : 'err');
+    $('orStatus').textContent = message;
+    if (ok) renderSummary();
+  });
+
+  $('skipUses').addEventListener('click', () => setStep(2));
+  $('toStep2').addEventListener('click', () => { renderPlatforms(); setStep(2); });
+  $('backTo1').addEventListener('click', () => setStep(1));
+  $('toStep3').addEventListener('click', () => {
+    setStep(3);
+    if (!state.models.length && state.mode === 'openrouter') bridge.fetchModels();
+  });
+  $('backTo2').addEventListener('click', () => { renderPlatforms(); setStep(2); });
+  $('skipAi').addEventListener('click', () => { renderSummary(); setStep(4); });
+  $('toStep4').addEventListener('click', () => { renderSummary(); setStep(4); });
+  $('backTo3').addEventListener('click', () => setStep(3));
+  $('enterMoch').addEventListener('click', () => {
+    bridge.finish();
+  });
+
+  $('modeOpenRouter').addEventListener('click', () => {
+    state.mode = 'openrouter';
+    $('modeOpenRouter').classList.add('selected');
+    $('modeDirect').classList.remove('selected');
+    $('openRouterPane').classList.remove('hidden');
+    $('directPane').classList.add('hidden');
+    if (!state.models.length) bridge.fetchModels();
+  });
+  $('modeDirect').addEventListener('click', () => {
+    state.mode = 'direct';
+    $('modeDirect').classList.add('selected');
+    $('modeOpenRouter').classList.remove('selected');
+    $('directPane').classList.remove('hidden');
+    $('openRouterPane').classList.add('hidden');
+  });
+
+  $('modelSearch').addEventListener('input', e => renderModels(e.target.value));
+
+  $('orSave').addEventListener('click', () => {
+    const key = $('orKey').value.trim();
+    const status = $('orStatus');
+    if (!key) { status.className = 'status err'; status.textContent = 'Paste a key first.'; return; }
+    if (!state.model) { status.className = 'status err'; status.textContent = 'Pick a model first.'; return; }
+    bridge.saveAiConfig('openai-compat', 'https://openrouter.ai/api/v1', state.model.id);
+    bridge.saveApiKey(key);
+    status.className = 'status ok';
+    status.textContent = 'Saved. ' + state.model.id + ' is ready.';
+  });
+
+  $('orOauth').addEventListener('click', () => bridge.startOpenRouterOAuth());
+
+  $('dSave').addEventListener('click', () => {
+    const status = $('dStatus');
+    const base = $('dBaseUrl').value.trim();
+    const model = $('dModel').value.trim();
+    if (!base || !model) { status.className = 'status err'; status.textContent = 'Base URL and model id are required.'; return; }
+    bridge.saveAiConfig('openai-compat', base, model);
+    const key = $('dKey').value.trim();
+    if (key) bridge.saveApiKey(key);
+    status.className = 'status ok';
+    status.textContent = 'Saved. ' + model + ' is ready.';
+  });
+});
+</script>
+</body>
+</html>

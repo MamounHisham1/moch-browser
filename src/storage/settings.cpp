@@ -31,6 +31,7 @@ static const QJsonObject defaultValues()
     headless.insert("cdp_url", "");
 
     QJsonObject root;
+    root.insert("setup_complete", false);
     root.insert("theme", "dark");
     root.insert("search_engine", "duckduckgo");
     root.insert("startup_behavior", "new_tab");
@@ -160,6 +161,21 @@ void Settings::invalidateApiKey() const
 {
     m_apiKeyCache = QString();
     m_apiKeyCached = false;
+}
+
+void Settings::saveApiKey(const QString &key)
+{
+    const QString path = secretPath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        qWarning("moch: cannot write API key to %s", qPrintable(path));
+        return;
+    }
+    file.write(key.toUtf8());
+    file.close();
+    file.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
+    invalidateApiKey();
 }
 
 QString Settings::secretPath() const

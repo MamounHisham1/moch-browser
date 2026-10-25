@@ -303,6 +303,11 @@ void MainWindow::buildMenuButton()
     menu->addSeparator();
     QAction *history = menu->addAction(tr("History\tCtrl+H"));
     connect(history, &QAction::triggered, this, &MainWindow::openHistory);
+    QAction *runSetup = menu->addAction(tr("Personalize Moch…"));
+    connect(runSetup, &QAction::triggered, this, [this] {
+        if (auto *view = m_tabs->currentView())
+            view->load(QUrl("moch://setup"));
+    });
     QAction *askAi = menu->addAction(tr("AI Sidebar\tCtrl+I"));
     connect(askAi, &QAction::triggered, this, [this] {
         m_aiSidebar->setExpanded(!m_aiSidebar->isExpanded());

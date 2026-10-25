@@ -24,9 +24,9 @@ MochUrlScheme::MochUrlScheme(QObject *parent)
 void MochUrlScheme::requestStarted(QWebEngineUrlRequestJob *job)
 {
     const QUrl url = job->requestUrl();
-    if (url.host() == "newtab") {
+    if (url.host() == "newtab" || url.host() == "setup") {
         QBuffer *buffer = new QBuffer(job);
-        buffer->setData(newTabHtml());
+        buffer->setData(url.host() == "setup" ? setupHtml() : newTabHtml());
         connect(buffer, &QIODevice::aboutToClose, buffer, &QObject::deleteLater);
         buffer->open(QIODevice::ReadOnly);
         job->reply("text/html", buffer);
@@ -41,6 +41,16 @@ QByteArray MochUrlScheme::newTabHtml() const
     if (!page.open(QIODevice::ReadOnly)) {
         qWarning("moch: cannot load new-tab page resource");
         return QByteArrayLiteral("<html><body><h1>Moch</h1></body></html>");
+    }
+    return page.readAll();
+}
+
+QByteArray MochUrlScheme::setupHtml() const
+{
+    QFile page(":/pages/setup.html");
+    if (!page.open(QIODevice::ReadOnly)) {
+        qWarning("moch: cannot load setup page resource");
+        return QByteArrayLiteral("<html><body><h1>Moch setup</h1></body></html>");
     }
     return page.readAll();
 }

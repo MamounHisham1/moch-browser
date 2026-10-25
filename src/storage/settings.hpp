@@ -16,6 +16,7 @@ public:
     void reset();
 
     QString apiKey() const;
+    void saveApiKey(const QString &key);
     void invalidateApiKey() const;
     QString secretPath() const;
     QString theme() const { return get("theme", "dark").toString(); }

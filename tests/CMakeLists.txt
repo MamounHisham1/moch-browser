@@ -43,6 +43,9 @@ qt_add_executable(tst_browsercore
     ../src/browser/urlresolver.cpp ../src/browser/urlresolver.hpp
     ../src/browser/webview.cpp ../src/browser/webview.hpp
     ../src/browser/newtabbridge.cpp ../src/browser/newtabbridge.hpp
+    ../src/browser/setupbridge.cpp ../src/browser/setupbridge.hpp
+    ../src/browser/openrouterauth.cpp ../src/browser/openrouterauth.hpp
+    ../src/ai/modelcatalog.cpp ../src/ai/modelcatalog.hpp
     ../src/storage/database.cpp ../src/storage/database.hpp
     ../src/storage/settings.cpp ../src/storage/settings.hpp
 )
@@ -69,6 +72,9 @@ qt_add_executable(tst_agent
     ../src/browser/historystore.cpp ../src/browser/historystore.hpp
     ../src/browser/tabmanager.cpp ../src/browser/tabmanager.hpp
     ../src/browser/newtabbridge.cpp ../src/browser/newtabbridge.hpp
+    ../src/browser/setupbridge.cpp ../src/browser/setupbridge.hpp
+    ../src/browser/openrouterauth.cpp ../src/browser/openrouterauth.hpp
+    ../src/ai/modelcatalog.cpp ../src/ai/modelcatalog.hpp
     ../src/browser/urlresolver.cpp ../src/browser/urlresolver.hpp
     ../src/browser/webview.cpp ../src/browser/webview.hpp
     ../src/security/contentsanitizer.cpp
@@ -90,5 +96,25 @@ target_link_libraries(tst_agent PRIVATE
 
 add_test(NAME tst_agent COMMAND tst_agent)
 set_tests_properties(tst_agent PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+)
+
+qt_add_executable(tst_setup
+    tst_setup.cpp
+    ../src/ai/modelcatalog.cpp ../src/ai/modelcatalog.hpp
+    ../src/browser/openrouterauth.cpp ../src/browser/openrouterauth.hpp
+    ../src/browser/setupbridge.cpp ../src/browser/setupbridge.hpp
+    ../src/browser/webview.cpp ../src/browser/webview.hpp
+    ../src/storage/settings.cpp ../src/storage/settings.hpp
+)
+
+target_include_directories(tst_setup PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+target_link_libraries(tst_setup PRIVATE
+    Qt6::Core Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Test
+)
+
+add_test(NAME tst_setup COMMAND tst_setup)
+set_tests_properties(tst_setup PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
 )

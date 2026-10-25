@@ -6,5 +6,6 @@
     </qresource>
     <qresource prefix="/pages">
         <file alias="newtab.html">newtab.html</file>
+        <file alias="setup.html">setup.html</file>
     </qresource>
 </RCC>
