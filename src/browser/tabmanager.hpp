@@ -8,6 +8,8 @@
 
 class QStackedWidget;
 class QWebEngineProfile;
+class BookmarkStore;
+class HistoryStore;
 class Settings;
 class WebView;
 
@@ -25,7 +27,9 @@ class TabManager : public QObject
 {
     Q_OBJECT
 public:
-    explicit TabManager(Settings *settings, QWebEngineProfile *profile, QObject *parent = nullptr);
+    explicit TabManager(Settings *settings, QWebEngineProfile *profile,
+                        HistoryStore *history = nullptr, BookmarkStore *bookmarks = nullptr,
+                        QObject *parent = nullptr);
     ~TabManager() override;
 
     QWidget *widget() const;
@@ -50,13 +54,18 @@ signals:
     void tabIconChanged(int index, const QIcon &icon);
     void tabLoadProgress(int index, int progress);
     void tabUrlChanged(int index, const QUrl &url);
+    void tabLoadFinished(int index, const QUrl &url, bool ok);
     void lastTabClosed();
+    void searchRequested(const QString &query);
+    void openUrlRequested(const QUrl &url);
 
 private:
     void reindex();
 
     Settings *m_settings = nullptr;
     QWebEngineProfile *m_profile = nullptr;
+    HistoryStore *m_history = nullptr;
+    BookmarkStore *m_bookmarks = nullptr;
     QPointer<QStackedWidget> m_stack;
     QList<WebView *> m_views;
     QList<QUrl> m_closedUrls;

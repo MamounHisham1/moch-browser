@@ -4,8 +4,9 @@
 #include <QObject>
 #include <QString>
 
+#include "browser/historystore.hpp"
+
 class BookmarkStore;
-class HistoryStore;
 class Settings;
 
 class NewTabBridge : public QObject

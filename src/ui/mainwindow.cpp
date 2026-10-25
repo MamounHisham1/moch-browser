@@ -1,9 +1,12 @@
 #include "ui/mainwindow.hpp"
 
+#include <QDialog>
 #include <QFile>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QListWidgetItem>
 #include <QMenu>
 #include <QShortcut>
 #include <QToolButton>
@@ -12,14 +15,22 @@
 #include <QWebEngineHistory>
 #include <QWebEnginePage>
 
+#include "browser/bookmarkstore.hpp"
+#include "browser/downloadmanager.hpp"
+#include "browser/historystore.hpp"
 #include "browser/tabmanager.hpp"
+#include "browser/urlresolver.hpp"
 #include "browser/webview.hpp"
 #include "storage/settings.hpp"
+#include "ui/downloadspanel.hpp"
+#include "ui/settingsdialog.hpp"
 #include "ui/tabbar.hpp"
 #include "ui/toolbar.hpp"
 
-MainWindow::MainWindow(Settings *settings, TabManager *tabs, QWidget *parent)
-    : QMainWindow(parent), m_settings(settings), m_tabs(tabs)
+MainWindow::MainWindow(Settings *settings, TabManager *tabs, HistoryStore *history,
+                       BookmarkStore *bookmarks, DownloadManager *downloads, QWidget *parent)
+    : QMainWindow(parent), m_settings(settings), m_tabs(tabs), m_history(history),
+      m_bookmarks(bookmarks), m_downloads(downloads)
 {
     setWindowTitle("Moch");
     resize(1280, 800);
@@ -28,6 +39,8 @@ MainWindow::MainWindow(Settings *settings, TabManager *tabs, QWidget *parent)
     m_toolbar = new Toolbar(this);
     m_findBar = buildFindBar();
     m_findBar->hide();
+    m_downloadsPanel = new DownloadsPanel(m_downloads, this);
+    m_downloadsPanel->hide();
 
     auto *container = new QWidget(this);
     auto *layout = new QVBoxLayout(container);
@@ -41,6 +54,7 @@ MainWindow::MainWindow(Settings *settings, TabManager *tabs, QWidget *parent)
 
     connectTabs();
     buildMenuButton();
+    buildStoreMenus();
     buildShortcuts();
     applyTheme();
 }
@@ -145,23 +159,141 @@ void MainWindow::connectTabs()
         m_tabBar->setCurrentIndex(m_tabs->currentIndex());
         updateNavigationState();
     });
-    connect(m_tabs, &TabManager::currentChanged, this, [this](int) { updateNavigationState(); });
+    connect(m_tabs, &TabManager::currentChanged, this, [this](int) {
+        updateNavigationState();
+        updateBookmarkStar();
+    });
     connect(m_tabs, &TabManager::tabUrlChanged, this, [this](int, const QUrl &) {
         updateNavigationState();
+        updateBookmarkStar();
     });
     connect(m_tabs, &TabManager::tabLoadProgress, this, [this](int index, int progress) {
         if (index == m_tabs->currentIndex())
             m_toolbar->setLoading(progress < 100);
     });
+    connect(m_tabs, &TabManager::tabLoadFinished, this,
+            &MainWindow::recordHistory);
+    connect(m_tabs, &TabManager::searchRequested, this, [this](const QString &query) {
+        if (query.startsWith("/ask"))
+            m_toolbar->addressBar()->setFocus();
+        else
+            m_tabs->navigateCurrent(query);
+    });
+    connect(m_tabs, &TabManager::openUrlRequested, this, [this](const QUrl &url) {
+        m_tabs->currentView()->load(url);
+    });
     connect(m_tabs, &TabManager::lastTabClosed, this,
             [this] { m_tabs->addTab(QUrl("moch://newtab")); });
+    connect(this, &MainWindow::bookmarkToggleRequested, this, [this](const QUrl &url) {
+        if (url.isEmpty() || url.scheme() == "moch")
+            return;
+        if (m_bookmarks->contains(url.toString()))
+            m_bookmarks->remove(url.toString());
+        else
+            m_bookmarks->add(url.toString(), m_tabs->currentView()->title());
+        updateBookmarkStar();
+    });
+    connect(m_toolbar, &Toolbar::downloadsPanelRequested, this, [this] {
+        if (m_downloadsPanel->isVisible())
+            m_downloadsPanel->hide();
+        else {
+            m_downloadsPanel->move(mapToGlobal(QPoint(width() - 440, 96)));
+            m_downloadsPanel->show();
+        }
+    });
+    connect(m_downloads, &DownloadManager::activeCountChanged, this, [this](int count) {
+        m_toolbar->setDownloadBadge(count, -1);
+    });
+    connect(m_bookmarks, &BookmarkStore::changed, this, &MainWindow::updateBookmarkStar);
+}
+
+void MainWindow::recordHistory(int index, const QUrl &url, bool ok)
+{
+    if (!ok || url.scheme() == "moch" || !m_history)
+        return;
+    if (const WebView *view = m_tabs->view(index); view && view == m_tabs->currentView())
+        m_history->recordVisit(url.toString(), view->title());
+}
+
+void MainWindow::updateBookmarkStar()
+{
+    const WebView *view = m_tabs->currentView();
+    const bool bookmarked =
+        view && m_bookmarks && m_bookmarks->contains(view->url().toString());
+    m_toolbar->setBookmarked(bookmarked);
+}
+
+void MainWindow::buildStoreMenus()
+{
+    if (m_bookmarks) {
+        auto *bookmarksMenu = new QMenu(this);
+        const auto rebuildBookmarks = [this, bookmarksMenu] {
+            bookmarksMenu->clear();
+            const QList<Bookmark> all = m_bookmarks->all();
+            if (all.isEmpty())
+                bookmarksMenu->addAction(tr("(no bookmarks)"))->setEnabled(false);
+            for (const Bookmark &bookmark : all) {
+                QAction *action = bookmarksMenu->addAction(
+                    bookmark.title.isEmpty() ? bookmark.url : bookmark.title);
+                connect(action, &QAction::triggered, this, [this, bookmark] {
+                    if (auto *view = m_tabs->currentView())
+                        view->load(QUrl(bookmark.url));
+                });
+            }
+        };
+        connect(m_bookmarks, &BookmarkStore::changed, bookmarksMenu, rebuildBookmarks);
+        rebuildBookmarks();
+        m_toolbar->setBookmarksMenu(bookmarksMenu);
+    }
+    if (m_history) {
+        auto *showHistory = new QShortcut(QKeySequence("Ctrl+H"), this);
+        connect(showHistory, &QShortcut::activated, this, &MainWindow::openHistory);
+    }
+    auto *showSettings = new QShortcut(QKeySequence("Ctrl+,"), this);
+    connect(showSettings, &QShortcut::activated, this, &MainWindow::openSettings);
+}
+
+void MainWindow::openHistory()
+{
+    auto *dialog = new QDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(tr("History"));
+    dialog->resize(560, 480);
+    auto *list = new QListWidget(dialog);
+    for (const HistoryEntry &entry : m_history->visits(500, 0)) {
+        QListWidgetItem *row = new QListWidgetItem(
+            tr("%1  —  %2").arg(entry.title.isEmpty() ? entry.url : entry.title, entry.url),
+            list);
+        row->setData(Qt::UserRole, entry.url);
+    }
+    connect(list, &QListWidget::itemActivated, this, [this, dialog](QListWidgetItem *row) {
+        if (auto *view = m_tabs->currentView())
+            view->load(QUrl(row->data(Qt::UserRole).toString()));
+        dialog->accept();
+    });
+    auto *layout = new QVBoxLayout(dialog);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(list);
+    dialog->show();
+}
+
+void MainWindow::openSettings()
+{
+    auto *dialog = new SettingsDialog(m_settings, this);
+    connect(dialog, &SettingsDialog::themeChanged, this, &MainWindow::applyTheme);
+    dialog->exec();
 }
 
 void MainWindow::buildMenuButton()
 {
     auto *menu = new QMenu(this);
-    QAction *newWindow = menu->addAction("New Window\tCtrl+N");
+    QAction *newWindow = menu->addAction(tr("New Window\tCtrl+N"));
     connect(newWindow, &QAction::triggered, this, &MainWindow::newWindowRequested);
+    menu->addSeparator();
+    QAction *history = menu->addAction(tr("History\tCtrl+H"));
+    connect(history, &QAction::triggered, this, &MainWindow::openHistory);
+    QAction *settings = menu->addAction(tr("Settings\tCtrl+,"));
+    connect(settings, &QAction::triggered, this, &MainWindow::openSettings);
     m_toolbar->setSettingsMenu(menu);
 }
 
@@ -225,6 +357,7 @@ void MainWindow::updateNavigationState()
         m_toolbar->setSecurity(view->url());
         m_toolbar->setLoading(view->isLoading());
     }
+    updateBookmarkStar();
 }
 
 void MainWindow::toggleFindBar()

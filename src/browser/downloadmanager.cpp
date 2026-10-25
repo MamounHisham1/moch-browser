@@ -18,7 +18,7 @@ void DownloadManager::handleDownload(QWebEngineDownloadRequest *request)
     item.url = request->url().toString();
     item.directory = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
     item.fileName = QFileInfo(request->downloadFileName()).fileName();
-    item.total = request->totalBytesExpected();
+    item.total = request->totalBytes();
     request->setDownloadDirectory(item.directory);
     request->setDownloadFileName(item.fileName);
     m_items.append(item);
@@ -32,7 +32,7 @@ void DownloadManager::handleDownload(QWebEngineDownloadRequest *request)
                     if (item.id != id)
                         continue;
                     item.received = request->receivedBytes();
-                    item.total = request->totalBytesExpected();
+                    item.total = request->totalBytes();
                     emit itemChanged(item.id);
                     return;
                 }

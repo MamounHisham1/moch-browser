@@ -2,16 +2,22 @@
 
 #include <QStackedWidget>
 #include <QTimer>
+#include <QWebChannel>
 #include <QWebEngineHistory>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
 
+#include "browser/bookmarkstore.hpp"
+#include "browser/historystore.hpp"
+#include "browser/newtabbridge.hpp"
 #include "browser/urlresolver.hpp"
 #include "browser/webview.hpp"
 #include "storage/settings.hpp"
 
-TabManager::TabManager(Settings *settings, QWebEngineProfile *profile, QObject *parent)
-    : QObject(parent), m_settings(settings), m_profile(profile)
+TabManager::TabManager(Settings *settings, QWebEngineProfile *profile, HistoryStore *history,
+                       BookmarkStore *bookmarks, QObject *parent)
+    : QObject(parent), m_settings(settings), m_profile(profile), m_history(history),
+      m_bookmarks(bookmarks)
 {
     m_stack = new QStackedWidget();
     connect(m_stack, &QObject::destroyed, this, [this] {
@@ -95,11 +101,24 @@ int TabManager::addTab(const QUrl &url, bool background)
         emit tabLoadProgress(view->tabIndex(), progress);
     });
     connect(view, &QWebEngineView::loadStarted, this, [view] { view->setLoadingState(true); });
-    connect(view, &QWebEngineView::loadFinished, this, [view](bool ok) {
+    connect(view, &QWebEngineView::loadFinished, this, [this, view](bool ok) {
         view->setLoadingState(false);
+        emit tabLoadFinished(view->tabIndex(), view->url(), ok);
         if (!ok)
             qWarning("moch: tab %d failed to load", view->tabIndex());
     });
+
+    if (m_history && m_bookmarks) {
+        auto *channel = new QWebChannel(view);
+        auto *bridge = new NewTabBridge(m_history, m_bookmarks, m_settings, channel);
+        connect(bridge, &NewTabBridge::searchRequestedByUser, this,
+                &TabManager::searchRequested);
+        connect(bridge, &NewTabBridge::openUrlRequested, this, [this](const QString &url) {
+            emit openUrlRequested(QUrl(url));
+        });
+        channel->registerObject("mochBridge", bridge);
+        view->page()->setWebChannel(channel);
+    }
 
     view->load(url);
     if (!background)

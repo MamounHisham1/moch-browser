@@ -16,6 +16,8 @@ public:
     void reset();
 
     QString apiKey() const;
+    void invalidateApiKey() const;
+    QString secretPath() const;
     QString theme() const { return get("theme", "dark").toString(); }
     QString searchEngine() const { return get("search_engine", "duckduckgo").toString(); }
 

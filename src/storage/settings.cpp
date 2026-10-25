@@ -145,9 +145,7 @@ QString Settings::apiKey() const
         m_apiKeyCached = true;
         return fromEnv;
     }
-    const QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-                         + "/secret";
-    QFile file(path);
+    QFile file(secretPath());
     if (file.open(QIODevice::ReadOnly)) {
         m_apiKeyCache = QString::fromUtf8(file.readAll().trimmed());
         m_apiKeyCached = true;
@@ -156,4 +154,15 @@ QString Settings::apiKey() const
     m_apiKeyCache = QString();
     m_apiKeyCached = true;
     return QString();
+}
+
+void Settings::invalidateApiKey() const
+{
+    m_apiKeyCache = QString();
+    m_apiKeyCached = false;
+}
+
+QString Settings::secretPath() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/secret";
 }
