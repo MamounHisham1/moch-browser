@@ -442,14 +442,14 @@ public:
     }
     void execute(const QJsonObject &args, std::function<void(ToolResult)> done) override
     {
-        WebView *view = resolveTab(args);
-        if (!view) {
-            done({false, "no_tab", "no such tab", {}});
-            return;
-        }
         const QUrl url(args.value("url").toString());
         if (url.scheme() != "http" && url.scheme() != "https") {
             done({false, "bad_scheme", "only http and https navigation is allowed", {}});
+            return;
+        }
+        WebView *view = resolveTab(args);
+        if (!view) {
+            done({false, "no_tab", "no such tab", {}});
             return;
         }
         QMetaObject::Connection conn = view->connect(

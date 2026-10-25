@@ -5,6 +5,8 @@ const char *kPlainBody =
     R"({"choices":[{"message":{"role":"assistant","content":"Hello!"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":3}})";
 const char *kToolCallsBody =
     R"({"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_page_content","arguments":"{}"}}]},"finish_reason":"tool_calls"}]})";
+const char *kToolCallClickSubmitBody =
+    R"({"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_2","type":"function","function":{"name":"click_element","arguments":"{\"selector\":\"#submit-button\"}"}}]},"finish_reason":"tool_calls"}]})";
 const char *kUnauthorizedBody = R"({"error":{"message":"Incorrect API key provided"}})";
 
 QByteArray sseDelta(const QByteArray &json)
@@ -73,12 +75,18 @@ void MockOpenAiServer::onNewConnection()
 
 void MockOpenAiServer::respond(QTcpSocket *socket)
 {
+    if (m_queue.isEmpty())
+        m_queue.append(PlainMessage);
+    const Scenario m_scenario = m_queue.takeFirst();
     switch (m_scenario) {
     case PlainMessage:
         writeHttp(socket, 200, "OK", kPlainBody, "application/json");
         break;
     case ToolCalls:
         writeHttp(socket, 200, "OK", kToolCallsBody, "application/json");
+        break;
+    case ToolCallClickSubmit:
+        writeHttp(socket, 200, "OK", kToolCallClickSubmitBody, "application/json");
         break;
     case Unauthorized:
         writeHttp(socket, 401, "Unauthorized", kUnauthorizedBody, "application/json");

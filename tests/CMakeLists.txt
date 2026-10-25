@@ -57,3 +57,38 @@ add_test(NAME tst_browsercore COMMAND tst_browsercore)
 set_tests_properties(tst_browsercore PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
 )
+
+qt_add_executable(tst_agent
+    tst_agent.cpp
+    mockopenaiserver.cpp mockopenaiserver.hpp
+    ../src/agent/agentservice.cpp ../src/agent/agentservice.hpp
+    ../src/agent/approvalgate.cpp ../src/agent/approvalgate.hpp
+    ../src/ai/provider.cpp ../src/ai/provider.hpp
+    ../src/ai/openaicompatprovider.cpp ../src/ai/openaicompatprovider.hpp
+    ../src/browser/bookmarkstore.cpp ../src/browser/bookmarkstore.hpp
+    ../src/browser/historystore.cpp ../src/browser/historystore.hpp
+    ../src/browser/tabmanager.cpp ../src/browser/tabmanager.hpp
+    ../src/browser/newtabbridge.cpp ../src/browser/newtabbridge.hpp
+    ../src/browser/urlresolver.cpp ../src/browser/urlresolver.hpp
+    ../src/browser/webview.cpp ../src/browser/webview.hpp
+    ../src/security/contentsanitizer.cpp
+    ../src/security/permissionpolicy.cpp
+    ../src/security/riskclassifier.cpp
+    ../src/security/secretredactor.cpp
+    ../src/storage/database.cpp
+    ../src/storage/settings.cpp
+    ../src/tools/tool.cpp
+    ../src/tools/toolregistry.cpp
+    ../src/tools/pagetools.cpp
+)
+
+target_include_directories(tst_agent PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+target_link_libraries(tst_agent PRIVATE
+    Qt6::Core Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Sql Qt6::WebChannel Qt6::Test
+)
+
+add_test(NAME tst_agent COMMAND tst_agent)
+set_tests_properties(tst_agent PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+)

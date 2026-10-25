@@ -116,10 +116,6 @@ void AiSidebar::onSubmit()
                 &AiSidebar::onApprovalRequested);
     }
 
-    const bool isTask = text.startsWith("/ask ") ? false : text.length() > 0 &&
-                        (text.endsWith('?') ? false : false);
-    Q_UNUSED(isTask);
-
     const QString pageContext = currentPageContext();
 
     if (text.startsWith("/ask")) {

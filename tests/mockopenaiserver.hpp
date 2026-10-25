@@ -9,7 +9,7 @@ class MockOpenAiServer : public QObject
 {
     Q_OBJECT
 public:
-    enum Scenario { PlainMessage, ToolCalls, Unauthorized, Malformed, StreamContent, StreamToolCalls };
+    enum Scenario { PlainMessage, ToolCalls, ToolCallClickSubmit, Unauthorized, Malformed, StreamContent, StreamToolCalls };
 
     struct CapturedRequest
     {
@@ -22,7 +22,8 @@ public:
     explicit MockOpenAiServer(QObject *parent = nullptr);
     bool start();
     int port() const { return m_port; }
-    void setScenario(Scenario scenario) { m_scenario = scenario; }
+    void setScenario(Scenario scenario) { m_queue.clear(); m_queue.append(scenario); }
+    void setScenarioQueue(const QList<Scenario> &queue) { m_queue = queue; }
     CapturedRequest lastRequest;
 
 private slots:
@@ -36,5 +37,5 @@ private:
 
     QTcpServer m_server;
     int m_port = 0;
-    Scenario m_scenario = PlainMessage;
+    QList<Scenario> m_queue{PlainMessage};
 };
