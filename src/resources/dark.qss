@@ -3,19 +3,17 @@
     font-size: 13px;
 }
 
-QMainWindow, QToolBar, QTabBar, QStackedWidget {
+QMainWindow, QToolBar, QTabBar, QStackedWidget, QWidget#tabStrip {
     background: #141517;
     color: #e8e8ea;
 }
 
-QToolBar#navToolbar {
+QWidget#navToolbar {
     border: none;
     border-bottom: 1px solid #26282c;
-    padding: 4px 8px;
-    spacing: 4px;
 }
 
-QToolBar QToolButton {
+QWidget#navToolbar QToolButton, QWidget#findBar QToolButton, QToolButton#newTabButton {
     background: transparent;
     border: none;
     border-radius: 6px;
@@ -24,13 +22,45 @@ QToolBar QToolButton {
     font-size: 15px;
 }
 
-QToolBar QToolButton:hover {
+QWidget#navToolbar QToolButton:hover, QWidget#findBar QToolButton:hover,
+QToolButton#newTabButton:hover {
     background: #24262b;
     color: #ffffff;
 }
 
-QToolBar QToolButton:disabled {
+QWidget#navToolbar QToolButton:disabled {
     color: #55575e;
+}
+
+QWidget#navToolbar QToolButton:checked {
+    color: #4a7db5;
+}
+
+QToolButton::menu-indicator {
+    image: none;
+}
+
+QWidget#tabStrip QToolButton#newTabButton {
+    background: #191a1d;
+    font-size: 16px;
+    padding: 6px 10px;
+}
+
+QWidget#findBar {
+    background: #191a1d;
+    border-bottom: 1px solid #26282c;
+}
+
+QLineEdit#findInput {
+    background: #1e2024;
+    border: 1px solid #2a2d33;
+    border-radius: 12px;
+    padding: 4px 12px;
+    color: #e8e8ea;
+}
+
+QLabel#findStatus {
+    color: #8a8c93;
 }
 
 QLineEdit#addressBar {

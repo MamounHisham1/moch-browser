@@ -15,6 +15,18 @@ void WebView::setTabIndex(int index)
     m_tabIndex = index;
 }
 
+void WebView::setLoadingState(bool loading)
+{
+    m_loading = loading;
+    if (loading)
+        m_loadProgress = 0;
+}
+
+void WebView::setLoadProgressValue(int progress)
+{
+    m_loadProgress = progress;
+}
+
 QWebEngineView *WebView::createWindow(QWebEnginePage::WebWindowType type)
 {
     QWebEngineView *view = new WebView(this);

@@ -21,12 +21,21 @@ void ApplicationController::start()
     QWebEngineProfile *profile = QWebEngineProfile::defaultProfile();
     profile->installUrlSchemeHandler("moch", new MochUrlScheme(profile));
 
-    m_tabs = new TabManager(m_settings, profile, this);
-    m_window = new MainWindow(m_settings, m_tabs);
-    m_window->show();
+    openWindow();
+}
 
-    if (m_settings->get("startup_behavior", "new_tab").toString() == "new_tab")
-        m_tabs->addTab(QUrl("moch://newtab"));
-    else
-        m_tabs->addTab(QUrl("moch://newtab"));
+void ApplicationController::openWindow()
+{
+    QWebEngineProfile *profile = QWebEngineProfile::defaultProfile();
+    TabManager *tabs = new TabManager(m_settings, profile, this);
+    MainWindow *window = new MainWindow(m_settings, tabs);
+    window->setAttribute(Qt::WA_DeleteOnClose);
+    window->show();
+    tabs->addTab(QUrl("moch://newtab"));
+    connect(window, &MainWindow::newWindowRequested, this, &ApplicationController::openWindow);
+
+    if (!m_window) {
+        m_tabs = tabs;
+        m_window = window;
+    }
 }

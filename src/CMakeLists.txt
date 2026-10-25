@@ -6,6 +6,8 @@ qt_add_executable(moch
     browser/urlresolver.cpp browser/urlresolver.hpp
     browser/webview.cpp browser/webview.hpp
     ui/mainwindow.cpp ui/mainwindow.hpp
+    ui/tabbar.cpp ui/tabbar.hpp
+    ui/toolbar.cpp ui/toolbar.hpp
     storage/settings.cpp storage/settings.hpp
     resources/moch.qrc
 )
