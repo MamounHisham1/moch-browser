@@ -3,6 +3,7 @@
 #include <QMainWindow>
 #include <QUrl>
 
+class AiSidebar;
 class QLabel;
 class QLineEdit;
 class BookmarkStore;
@@ -12,6 +13,7 @@ class HistoryStore;
 class Settings;
 class TabBar;
 class TabManager;
+class ToolRegistry;
 class Toolbar;
 class QWidget;
 
@@ -25,6 +27,8 @@ public:
 
     Toolbar *toolbar() const { return m_toolbar; }
     TabBar *tabBar() const { return m_tabBar; }
+    AiSidebar *aiSidebar() const { return m_aiSidebar; }
+    ToolRegistry *toolRegistry() const { return m_toolRegistry; }
 
 public slots:
     void applyTheme();
@@ -56,6 +60,8 @@ private:
     BookmarkStore *m_bookmarks = nullptr;
     DownloadManager *m_downloads = nullptr;
     DownloadsPanel *m_downloadsPanel = nullptr;
+    ToolRegistry *m_toolRegistry = nullptr;
+    AiSidebar *m_aiSidebar = nullptr;
     QWidget *m_findBar = nullptr;
     QLineEdit *m_findInput = nullptr;
     QLabel *m_findStatus = nullptr;

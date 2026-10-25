@@ -22,6 +22,8 @@
 #include "browser/urlresolver.hpp"
 #include "browser/webview.hpp"
 #include "storage/settings.hpp"
+#include "tools/toolregistry.hpp"
+#include "ui/aisidebar.hpp"
 #include "ui/downloadspanel.hpp"
 #include "ui/settingsdialog.hpp"
 #include "ui/tabbar.hpp"
@@ -42,14 +44,23 @@ MainWindow::MainWindow(Settings *settings, TabManager *tabs, HistoryStore *histo
     m_downloadsPanel = new DownloadsPanel(m_downloads, this);
     m_downloadsPanel->hide();
 
+    m_toolRegistry = new ToolRegistry(m_tabs, this);
+    m_aiSidebar = new AiSidebar(m_settings, m_tabs, m_toolRegistry, this);
+
     auto *container = new QWidget(this);
-    auto *layout = new QVBoxLayout(container);
+    auto *layout = new QHBoxLayout(container);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
-    layout->addWidget(m_tabBar);
-    layout->addWidget(m_toolbar);
-    layout->addWidget(m_findBar);
-    layout->addWidget(m_tabs->widget());
+    auto *mainColumn = new QWidget(container);
+    auto *columnLayout = new QVBoxLayout(mainColumn);
+    columnLayout->setContentsMargins(0, 0, 0, 0);
+    columnLayout->setSpacing(0);
+    columnLayout->addWidget(m_tabBar);
+    columnLayout->addWidget(m_toolbar);
+    columnLayout->addWidget(m_findBar);
+    columnLayout->addWidget(m_tabs->widget());
+    layout->addWidget(mainColumn, 1);
+    layout->addWidget(m_aiSidebar);
     setCentralWidget(container);
 
     connectTabs();
@@ -292,6 +303,10 @@ void MainWindow::buildMenuButton()
     menu->addSeparator();
     QAction *history = menu->addAction(tr("History\tCtrl+H"));
     connect(history, &QAction::triggered, this, &MainWindow::openHistory);
+    QAction *askAi = menu->addAction(tr("AI Sidebar\tCtrl+I"));
+    connect(askAi, &QAction::triggered, this, [this] {
+        m_aiSidebar->setExpanded(!m_aiSidebar->isExpanded());
+    });
     QAction *settings = menu->addAction(tr("Settings\tCtrl+,"));
     connect(settings, &QAction::triggered, this, &MainWindow::openSettings);
     m_toolbar->setSettingsMenu(menu);
@@ -339,6 +354,9 @@ void MainWindow::buildShortcuts()
     });
     shortcut(QKeySequence("F11"), [this] {
         isFullScreen() ? showNormal() : showFullScreen();
+    });
+    shortcut(QKeySequence("Ctrl+I"), [this] {
+        m_aiSidebar->setExpanded(!m_aiSidebar->isExpanded());
     });
     shortcut(QKeySequence(Qt::Key_Escape), [this] {
         if (m_findBar->isVisible())

@@ -19,12 +19,7 @@ struct ChatMessage
     QJsonArray toolCalls;
 };
 
-struct ToolSpec
-{
-    QString name;
-    QString description;
-    QJsonObject parameters;
-};
+#include "tools/tool.hpp"
 
 struct ChatRequest
 {
@@ -56,6 +51,10 @@ public:
 
     virtual QString id() const = 0;
     virtual void chat(const ChatRequest &request, std::function<void(ChatResponse)> callback) = 0;
+    virtual void chatStream(const ChatRequest &request, std::function<void(ChatResponse)> callback)
+    {
+        chat(request, std::move(callback));
+    }
 
 public slots:
     virtual void abort() = 0;
