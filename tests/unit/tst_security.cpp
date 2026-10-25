@@ -6,13 +6,19 @@
 #include "security/contentsanitizer.hpp"
 #include "security/riskclassifier.hpp"
 #include "security/secretredactor.hpp"
+#include "security/permissionpolicy.hpp"
 
 using Security::ClassifyDetail;
+using Security::Decision;
+using Security::DecisionDetail;
+using Security::Permission;
 using Security::Risk;
 using Security::SanitizeResult;
 using Security::SecretRedactor;
 using Security::classify;
 using Security::classifyDetailed;
+using Security::decide;
+using Security::decideDetailed;
 using Security::sanitize;
 
 namespace {
@@ -38,6 +44,9 @@ private slots:
     void redactorLongestSecretWins();
     void redactorReplacesTokenPatterns();
     void redactorLeavesInnocentTextUntouched();
+    void permissionPolicyMatrix();
+    void permissionPolicyMatrix_data();
+    void policyUsesClassifierVerdict();
 };
 
 void SecurityTest::sanitizerStripsNonTextElements()
@@ -238,6 +247,90 @@ void SecurityTest::redactorLeavesInnocentTextUntouched()
     const QString innocent = QStringLiteral(
         "Hello world, the answer is 42. Bearer short and sk-tiny stay visible.");
     QCOMPARE(redactor.redact(innocent), innocent);
+}
+
+void SecurityTest::permissionPolicyMatrix_data()
+{
+    QTest::addColumn<int>("permission");
+    QTest::addColumn<QString>("tool");
+    QTest::addColumn<int>("risk");
+    QTest::addColumn<QJsonObject>("args");
+    QTest::addColumn<int>("expected");
+    QTest::addColumn<QString>("reasonContains");
+
+    const auto row = [](const char *name, Permission permission, const QString &tool, Risk risk,
+                        const QJsonObject &args, Decision expected,
+                        const QString &reasonContains) {
+        QTest::newRow(name) << int(permission) << tool << int(risk) << args << int(expected)
+                            << reasonContains;
+    };
+    const QJsonObject noArgs;
+
+    row("readonly denies click", Permission::ReadOnly, QStringLiteral("click_element"),
+        Risk::Safe, noArgs, Decision::Deny, QStringLiteral("read-only"));
+    row("readonly denies fill", Permission::ReadOnly, QStringLiteral("fill_input"), Risk::Safe,
+        noArgs, Decision::Deny, QStringLiteral("read-only"));
+    row("readonly denies select", Permission::ReadOnly, QStringLiteral("select_option"),
+        Risk::Safe, noArgs, Decision::Deny, QStringLiteral("read-only"));
+    row("readonly denies navigate", Permission::ReadOnly, QStringLiteral("navigate_to_url"),
+        Risk::Safe, noArgs, Decision::Deny, QStringLiteral("read-only"));
+    row("readonly allows read tool", Permission::ReadOnly, QStringLiteral("get_page_content"),
+        Risk::Safe, noArgs, Decision::Allow, QString());
+    row("cautious allows safe", Permission::Cautious, QStringLiteral("find_elements"), Risk::Safe,
+        noArgs, Decision::Allow, QString());
+    row("cautious gates sensitive click", Permission::Cautious,
+        QStringLiteral("click_element"), Risk::Sensitive,
+        QJsonObject{{"text", QStringLiteral("Submit order")}}, Decision::NeedsApproval,
+        QStringLiteral("approval"));
+    row("cautious gates sensitive fill", Permission::Cautious, QStringLiteral("fill_input"),
+        Risk::Sensitive, QJsonObject{{"field", QStringLiteral("password")}},
+        Decision::NeedsApproval, QStringLiteral("approval"));
+    row("autonomous allows safe", Permission::Autonomous, QStringLiteral("click_element"),
+        Risk::Safe, noArgs, Decision::Allow, QString());
+    row("autonomous allows non-payment sensitive", Permission::Autonomous,
+        QStringLiteral("fill_input"), Risk::Sensitive,
+        QJsonObject{{"field", QStringLiteral("password")}, {"value", QStringLiteral("hunter2")}},
+        Decision::Allow, QString());
+    row("autonomous gates purchase", Permission::Autonomous, QStringLiteral("click_element"),
+        Risk::Sensitive, QJsonObject{{"text", QStringLiteral("Purchase now")}},
+        Decision::NeedsApproval, QStringLiteral("purchase"));
+    row("autonomous gates card fill", Permission::Autonomous, QStringLiteral("fill_input"),
+        Risk::Sensitive, QJsonObject{{"field", QStringLiteral("card")}},
+        Decision::NeedsApproval, QStringLiteral("card"));
+    row("autonomous gates donate", Permission::Autonomous, QStringLiteral("click_element"),
+        Risk::Sensitive, QJsonObject{{"text", QStringLiteral("Donate $5")}},
+        Decision::NeedsApproval, QStringLiteral("donate"));
+    row("autonomous allows file nav", Permission::Autonomous, QStringLiteral("navigate_to_url"),
+        Risk::Sensitive, QJsonObject{{"url", QStringLiteral("file:///etc/passwd")}},
+        Decision::Allow, QString());
+}
+
+void SecurityTest::permissionPolicyMatrix()
+{
+    QFETCH(int, permission);
+    QFETCH(QString, tool);
+    QFETCH(int, risk);
+    QFETCH(QJsonObject, args);
+    QFETCH(int, expected);
+    QFETCH(QString, reasonContains);
+
+    const DecisionDetail detail =
+        decideDetailed(Permission(permission), tool, Risk(risk), args);
+    QCOMPARE(int(detail.decision), expected);
+    QCOMPARE(decide(Permission(permission), tool, Risk(risk), args), detail.decision);
+    QVERIFY2(!detail.reason.isEmpty(),
+             qPrintable(QStringLiteral("empty reason for %1").arg(tool)));
+    if (!reasonContains.isEmpty())
+        QVERIFY(detail.reason.contains(reasonContains, Qt::CaseInsensitive));
+}
+
+void SecurityTest::policyUsesClassifierVerdict()
+{
+    const QJsonObject args{{"text", QStringLiteral("Purchase now")}};
+    const ClassifyDetail verdict = classifyDetailed(QStringLiteral("click_element"), args);
+    QCOMPARE(verdict.risk, Risk::Sensitive);
+    QCOMPARE(decide(Permission::Autonomous, QStringLiteral("click_element"), verdict.risk, args),
+             Decision::NeedsApproval);
 }
 
 QTEST_APPLESS_MAIN(SecurityTest)
