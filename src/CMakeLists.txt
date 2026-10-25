@@ -1,5 +1,8 @@
 qt_add_executable(moch
     main.cpp
+    ai/provider.cpp ai/provider.hpp
+    ai/openaicompatprovider.cpp ai/openaicompatprovider.hpp
+    ai/providerregistry.cpp ai/providerregistry.hpp
     app/applicationcontroller.cpp app/applicationcontroller.hpp
     browser/mochurlscheme.cpp browser/mochurlscheme.hpp
     browser/tabmanager.cpp browser/tabmanager.hpp
