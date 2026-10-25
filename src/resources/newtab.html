@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>New Tab</title>
+<style>
+:root {
+  --bg: #141517; --panel: #1b1d21; --border: #26282c; --text: #e8e8ea;
+  --muted: #9a9ca3; --accent: #4a7db5; --hover: #22242a;
+}
+body.light {
+  --bg: #f7f7f8; --panel: #ffffff; --border: #e2e2e5; --text: #1c1d20;
+  --muted: #6a6c73; --accent: #3d6ea5; --hover: #ececf0;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif; font-size: 14px;
+  display: flex; flex-direction: column; align-items: center; padding: 48px 24px;
+}
+h1 { font-weight: 500; font-size: 20px; letter-spacing: 0.5px; margin-bottom: 20px; }
+#search {
+  width: min(560px, 90vw); padding: 12px 18px; font-size: 15px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 24px; outline: none;
+}
+#search:focus { border-color: var(--accent); }
+section { width: min(760px, 92vw); margin-top: 28px; }
+h2 {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--muted); margin: 0 0 10px 2px;
+}
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tile {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  cursor: pointer; text-decoration: none; color: var(--text); overflow: hidden;
+}
+.tile:hover { background: var(--hover); }
+.favicon {
+  width: 24px; height: 24px; border-radius: 6px; flex: none;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.tile .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+ul.list { list-style: none; margin: 0; padding: 0; }
+ul.list li {
+  display: flex; gap: 10px; padding: 7px 10px; border-radius: 8px; cursor: pointer;
+}
+ul.list li:hover { background: var(--hover); }
+ul.list .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+ul.list .host { color: var(--muted); font-size: 12px; flex: none; }
+#ai-cta {
+  margin-top: 32px; padding: 10px 22px; font-size: 14px; border: none; cursor: pointer;
+  background: var(--accent); color: #fff; border-radius: 20px;
+}
+#ai-cta:hover { filter: brightness(1.1); }
+.empty { color: var(--muted); font-size: 13px; padding: 6px 10px; }
+</style>
+</head>
+<body>
+<h1>Moch</h1>
+<input id="search" type="text" placeholder="Search the web or type a URL" autofocus>
+<section id="topsites-section" hidden>
+  <h2>Frequently visited</h2>
+  <div class="grid" id="topsites"></div>
+</section>
+<section id="bookmarks-section" hidden>
+  <h2>Bookmarks</h2>
+  <div class="grid" id="bookmarks"></div>
+</section>
+<section id="history-section" hidden>
+  <h2>Recent</h2>
+  <ul class="list" id="history"></ul>
+</section>
+<button id="ai-cta">Ask Moch AI</button>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+const urlHost = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+const letter = s => (s || '?').trim().charAt(0).toUpperCase();
+
+function tile(entry) {
+  const a = document.createElement('a');
+  a.className = 'tile';
+  a.href = entry.url;
+  const icon = document.createElement('div');
+  icon.className = 'favicon';
+  icon.textContent = letter(urlHost(entry.url));
+  const label = document.createElement('span');
+  label.className = 'label';
+  label.textContent = entry.title || urlHost(entry.url);
+  a.append(icon, label);
+  a.addEventListener('click', e => { e.preventDefault(); bridge.openUrl(entry.url); });
+  return a;
+}
+
+function fill(id, items, make) {
+  const section = document.getElementById(id + '-section');
+  const container = document.getElementById(id);
+  container.textContent = '';
+  if (!items.length) { section.hidden = true; return; }
+  section.hidden = false;
+  items.slice(0, 9).forEach(item => container.append(make(item)));
+}
+
+let bridge = null;
+new QWebChannel(qt.webChannelTransport, channel => {
+  bridge = channel.objects.mochBridge;
+  document.body.classList.toggle('light', bridge.theme === 'light');
+
+  const topsites = bridge.getTopSites().items;
+  fill('topsites', topsites, tile);
+  fill('bookmarks', bridge.getBookmarks().items, tile);
+
+  const historyList = document.getElementById('history');
+  const recent = bridge.getRecentHistory().items;
+  if (recent.length) {
+    document.getElementById('history-section').hidden = false;
+    recent.forEach(item => {
+      const li = document.createElement('li');
+      const title = document.createElement('span');
+      title.className = 'title';
+      title.textContent = item.title || item.url;
+      const host = document.createElement('span');
+      host.className = 'host';
+      host.textContent = urlHost(item.url);
+      li.append(title, host);
+      li.addEventListener('click', () => bridge.openUrl(item.url));
+      historyList.append(li);
+    });
+  }
+});
+
+document.getElementById('search').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && bridge)
+    bridge.searchRequested(e.target.value);
+});
+document.getElementById('ai-cta').addEventListener('click', () => {
+  if (bridge)
+    bridge.searchRequested('/ask ');
+});
+</script>
+</body>
+</html>

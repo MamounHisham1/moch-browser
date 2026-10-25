@@ -1,6 +1,7 @@
 #include "browser/mochurlscheme.hpp"
 
 #include <QBuffer>
+#include <QFile>
 #include <QWebEngineUrlRequestJob>
 #include <QWebEngineProfile>
 #include <QWebEngineUrlScheme>
@@ -36,10 +37,10 @@ void MochUrlScheme::requestStarted(QWebEngineUrlRequestJob *job)
 
 QByteArray MochUrlScheme::newTabHtml() const
 {
-    return QByteArrayLiteral(
-        "<!DOCTYPE html><html><head><meta charset='utf-8'><style>"
-        "body{background:#141517;color:#e8e8ea;font-family:system-ui,sans-serif;"
-        "display:flex;align-items:center;justify-content:center;height:100vh;margin:0}"
-        "h1{font-weight:500;font-size:22px}"
-        "</style></head><body><h1>Moch</h1></body></html>");
+    QFile page(":/pages/newtab.html");
+    if (!page.open(QIODevice::ReadOnly)) {
+        qWarning("moch: cannot load new-tab page resource");
+        return QByteArrayLiteral("<html><body><h1>Moch</h1></body></html>");
+    }
+    return page.readAll();
 }
