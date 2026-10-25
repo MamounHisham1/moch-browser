@@ -1,6 +1,7 @@
 qt_add_executable(tst_security
     unit/tst_security.cpp
     ../src/security/contentsanitizer.cpp
+    ../src/security/riskclassifier.cpp
 )
 
 target_include_directories(tst_security PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)

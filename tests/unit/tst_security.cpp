@@ -4,8 +4,13 @@
 #include <QTest>
 
 #include "security/contentsanitizer.hpp"
+#include "security/riskclassifier.hpp"
 
+using Security::ClassifyDetail;
+using Security::Risk;
 using Security::SanitizeResult;
+using Security::classify;
+using Security::classifyDetailed;
 using Security::sanitize;
 
 namespace {
@@ -25,6 +30,8 @@ private slots:
     void sanitizerEnvelopeVerbatim();
     void sanitizerKeepsInjectionInsideEnvelope();
     void sanitizerEscapesSourceUrl();
+    void riskClassifierTable();
+    void riskClassifierTable_data();
 };
 
 void SecurityTest::sanitizerStripsNonTextElements()
@@ -114,6 +121,68 @@ void SecurityTest::sanitizerEscapesSourceUrl()
     QCOMPARE(r.text.count(QStringLiteral("<untrusted_webpage_content")), 1);
     QVERIFY(r.text.contains(
         QStringLiteral("<untrusted_webpage_content source=\"https://a.test/&quot; onload=&quot;alert(1)\">")));
+}
+
+void SecurityTest::riskClassifierTable_data()
+{
+    QTest::addColumn<QString>("tool");
+    QTest::addColumn<QJsonObject>("args");
+    QTest::addColumn<int>("expected");
+    QTest::addColumn<QString>("reasonContains");
+
+    const auto row = [](const char *name, const QString &tool, const QJsonObject &args,
+                        Risk expected, const QString &reasonContains) {
+        QTest::newRow(name) << tool << args << int(expected) << reasonContains;
+    };
+
+    row("submit click is sensitive", QStringLiteral("click_element"),
+        QJsonObject{{"text", QStringLiteral("Submit order")}}, Risk::Sensitive,
+        QStringLiteral("submit"));
+    row("purchase click is sensitive", QStringLiteral("click_element"),
+        QJsonObject{{"text", QStringLiteral("Purchase now")}}, Risk::Sensitive,
+        QStringLiteral("purchase"));
+    row("benign click is safe", QStringLiteral("click_element"),
+        QJsonObject{{"text", QStringLiteral("Read more")}}, Risk::Safe, QString());
+    row("password fill is sensitive", QStringLiteral("fill_input"),
+        QJsonObject{{"field", QStringLiteral("password")}, {"value", QStringLiteral("hunter2")}},
+        Risk::Sensitive, QStringLiteral("password"));
+    row("otp selector fill is sensitive", QStringLiteral("fill_input"),
+        QJsonObject{{"selector", QStringLiteral("#otp-code")}}, Risk::Sensitive,
+        QStringLiteral("otp"));
+    row("long digit value fill is sensitive", QStringLiteral("fill_input"),
+        QJsonObject{{"field", QStringLiteral("number")},
+                    {"value", QStringLiteral("4111111111111111")}},
+        Risk::Sensitive, QStringLiteral("12+ digits"));
+    row("short benign fill is safe", QStringLiteral("fill_input"),
+        QJsonObject{{"field", QStringLiteral("search")}, {"value", QStringLiteral("42")}},
+        Risk::Safe, QString());
+    row("https nav is safe", QStringLiteral("navigate_to_url"),
+        QJsonObject{{"url", QStringLiteral("https://example.test")}}, Risk::Safe, QString());
+    row("file nav is sensitive", QStringLiteral("navigate_to_url"),
+        QJsonObject{{"url", QStringLiteral("file:///etc/passwd")}}, Risk::Sensitive,
+        QStringLiteral("file"));
+    row("javascript nav is sensitive", QStringLiteral("navigate_to_url"),
+        QJsonObject{{"url", QStringLiteral("javascript:alert(1)")}}, Risk::Sensitive,
+        QStringLiteral("javascript"));
+    row("flagged args are sensitive", QStringLiteral("get_current_page"),
+        QJsonObject{{"sensitive", true}}, Risk::Sensitive,
+        QStringLiteral("explicitly marked"));
+}
+
+void SecurityTest::riskClassifierTable()
+{
+    QFETCH(QString, tool);
+    QFETCH(QJsonObject, args);
+    QFETCH(int, expected);
+    QFETCH(QString, reasonContains);
+
+    const ClassifyDetail detail = classifyDetailed(tool, args);
+    QCOMPARE(int(detail.risk), expected);
+    QCOMPARE(classify(tool, args), detail.risk);
+    QVERIFY2(!detail.reason.isEmpty(),
+             qPrintable(QStringLiteral("empty reason for %1").arg(tool)));
+    if (!reasonContains.isEmpty())
+        QVERIFY(detail.reason.contains(reasonContains, Qt::CaseInsensitive));
 }
 
 QTEST_APPLESS_MAIN(SecurityTest)
