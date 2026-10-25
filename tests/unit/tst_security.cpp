@@ -5,10 +5,12 @@
 
 #include "security/contentsanitizer.hpp"
 #include "security/riskclassifier.hpp"
+#include "security/secretredactor.hpp"
 
 using Security::ClassifyDetail;
 using Security::Risk;
 using Security::SanitizeResult;
+using Security::SecretRedactor;
 using Security::classify;
 using Security::classifyDetailed;
 using Security::sanitize;
@@ -32,6 +34,10 @@ private slots:
     void sanitizerEscapesSourceUrl();
     void riskClassifierTable();
     void riskClassifierTable_data();
+    void redactorReplacesKnownSecrets();
+    void redactorLongestSecretWins();
+    void redactorReplacesTokenPatterns();
+    void redactorLeavesInnocentTextUntouched();
 };
 
 void SecurityTest::sanitizerStripsNonTextElements()
@@ -183,6 +189,55 @@ void SecurityTest::riskClassifierTable()
              qPrintable(QStringLiteral("empty reason for %1").arg(tool)));
     if (!reasonContains.isEmpty())
         QVERIFY(detail.reason.contains(reasonContains, Qt::CaseInsensitive));
+}
+
+void SecurityTest::redactorReplacesKnownSecrets()
+{
+    SecretRedactor redactor;
+    redactor.setSecrets({QStringLiteral("sk-live-abc123DEF456"),
+                         QStringLiteral("hunter2-super-secret-value")});
+
+    const QString out = redactor.redact(
+        QStringLiteral("auth failed for hunter2-super-secret-value using sk-live-abc123DEF456"));
+    QVERIFY(!out.contains(QStringLiteral("hunter2-super-secret-value")));
+    QVERIFY(!out.contains(QStringLiteral("sk-live-abc123DEF456")));
+    QCOMPARE(out.count(QStringLiteral("«redacted»")), 2);
+}
+
+void SecurityTest::redactorLongestSecretWins()
+{
+    SecretRedactor redactor;
+    redactor.setSecrets({QStringLiteral("abc"), QStringLiteral("abcdef")});
+    const QString out = redactor.redact(QStringLiteral("key=abcdef"));
+    QCOMPARE(out, QStringLiteral("key=«redacted»"));
+}
+
+void SecurityTest::redactorReplacesTokenPatterns()
+{
+    SecretRedactor redactor;
+    redactor.setSecrets({});
+
+    const QString bearer = redactor.redact(
+        QStringLiteral("Authorization: Bearer abcdefghijklmnop"));
+    QCOMPARE(bearer, QStringLiteral("Authorization: Bearer «redacted»"));
+
+    const QString key = redactor.redact(QStringLiteral("key sk-ABCDEFGHIJKLMNOPQ sent"));
+    QCOMPARE(key, QStringLiteral("key «redacted» sent"));
+
+    const QString jwt = redactor.redact(
+        QStringLiteral("token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeK-_e"));
+    QVERIFY(!jwt.contains(QStringLiteral("eyJhbGciOiJIUzI1NiJ9")));
+    QVERIFY(jwt.contains(QStringLiteral("token=«redacted»")));
+}
+
+void SecurityTest::redactorLeavesInnocentTextUntouched()
+{
+    SecretRedactor redactor;
+    redactor.setSecrets({QStringLiteral("never-appears-here")});
+
+    const QString innocent = QStringLiteral(
+        "Hello world, the answer is 42. Bearer short and sk-tiny stay visible.");
+    QCOMPARE(redactor.redact(innocent), innocent);
 }
 
 QTEST_APPLESS_MAIN(SecurityTest)
