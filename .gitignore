@@ -1,0 +1,9 @@
+build/
+build-*/
+.env
+*.user
+.vscode/
+.idea/
+compile_commands.json
+.cache/
+.worktrees/
