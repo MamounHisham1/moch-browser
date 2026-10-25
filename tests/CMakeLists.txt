@@ -34,3 +34,26 @@ add_test(NAME tst_security COMMAND tst_security)
 set_tests_properties(tst_security PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
 )
+
+qt_add_executable(tst_browsercore
+    tst_browsercore.cpp
+    ../src/browser/bookmarkstore.cpp ../src/browser/bookmarkstore.hpp
+    ../src/browser/historystore.cpp ../src/browser/historystore.hpp
+    ../src/browser/tabmanager.cpp ../src/browser/tabmanager.hpp
+    ../src/browser/urlresolver.cpp ../src/browser/urlresolver.hpp
+    ../src/browser/webview.cpp ../src/browser/webview.hpp
+    ../src/browser/newtabbridge.cpp ../src/browser/newtabbridge.hpp
+    ../src/storage/database.cpp ../src/storage/database.hpp
+    ../src/storage/settings.cpp ../src/storage/settings.hpp
+)
+
+target_include_directories(tst_browsercore PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+target_link_libraries(tst_browsercore PRIVATE
+    Qt6::Core Qt6::Widgets Qt6::WebEngineWidgets Qt6::Sql Qt6::WebChannel Qt6::Test
+)
+
+add_test(NAME tst_browsercore COMMAND tst_browsercore)
+set_tests_properties(tst_browsercore PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+)

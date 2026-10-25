@@ -35,6 +35,14 @@ void BookmarkStore::remove(const QString &url)
     emit changed();
 }
 
+void BookmarkStore::clearAll()
+{
+    QSqlQuery query(Database::connection());
+    if (!query.exec("DELETE FROM bookmarks"))
+        qWarning("moch: bookmark clear failed: %s", qPrintable(query.lastError().text()));
+    emit changed();
+}
+
 QList<Bookmark> BookmarkStore::query(const QString &sql, const QList<QVariant> &binds) const
 {
     QList<Bookmark> out;

@@ -19,6 +19,7 @@ public:
 
     void add(const QString &url, const QString &title);
     void remove(const QString &url);
+    void clearAll();
     bool contains(const QString &url) const;
     Bookmark forUrl(const QString &url) const;
     QList<Bookmark> all() const;
