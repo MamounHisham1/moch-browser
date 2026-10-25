@@ -11,25 +11,56 @@ tools — never with unrestricted access to your machine, cookies, or files.
 
 ## Status
 
-Under active development. Phase tracking and the architectural record live in
+Working build (verified 2026-10-25, Arch Linux, Qt 6.11.2): 4 test suites,
+66 test functions, all passing via ctest; app selftest green; verified
+rendering on Wayland. Phase tracking and the architectural record live in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Known limitations are listed at
 the bottom of this file.
 
 ## Features
 
 - Real Chromium rendering via QtWebEngine (one shared profile for all tabs).
-- Tabs, address bar with search, back/forward/reload, history, bookmarks,
-  downloads with progress, keyboard shortcuts, dark/light themes.
-- New-tab page with top sites, bookmarks, and recent history.
-- AI sidebar: chat about the current page, summarize, question answering, and
-  autonomous multi-step tasks with a live tool timeline.
-- Agent runtime: typed browser tools, planning, cancellation, timeouts,
-  retry/step limits, and approval gates for sensitive actions.
+- Tabs (favicons, close, reorder, restore), address bar with search and
+  security indicator, back/forward/reload-stop, find-in-page, history,
+  bookmarks, downloads with progress panel, settings dialog, dark/light
+  themes, keyboard shortcuts.
+- New-tab page with top sites, bookmarks, recent history, and a search field
+  (WebChannel bridge into the browser).
+- AI sidebar (`Ctrl+I`): chat about the current page, and autonomous
+  multi-step tasks (`/ask <task>`) with a live tool timeline, approval
+  prompts, and an always-visible Stop button.
+- Agent runtime: 16 typed browser tools with JSON-Schema argument validation,
+  per-tool timeouts, tool-call and wall-clock limits, cancellation, and
+  approval gates driven by the permission policy (readonly / cautious /
+  autonomous).
 - Any OpenAI-compatible model provider (OpenAI, OpenRouter, Groq, Together,
   Ollama, LM Studio, vLLM) — configurable at runtime, no rebuild.
-- Security: page content is passed to the model as untrusted data inside
-  delimiters; secrets never leave the machine; sensitive actions require
-  approval; the agent can be stopped instantly.
+- Security: page content is sanitized and passed to the model as untrusted
+  data inside an explicit envelope; API keys are read from the environment or
+  a 0600 file and are redacted from logs; sensitive actions (submit/purchase/
+  payment/login) require explicit user approval; `file://` and other
+  non-http(s) navigation is blocked for the agent.
+
+## Measured performance
+
+On the development machine (Arch Linux, Wayland, 8 GB RAM, Qt 6.11.2):
+startup to a usable window with one new-tab page takes about 1.0 s
+(`--selftest` runs, which include a fixed 1.5 s settle, complete in
+~2.5 s wall clock). Total RSS with one new-tab open is ~490 MB across 5
+processes (249 MB UI process + 4 Chromium helper processes). These are
+measured numbers from `/proc/<pid>/status` on a release build, not
+projections.
+
+## Test results (executed 2026-10-25)
+
+```
+tst_provider     10 passed   (OpenAI wire format, error mapping, SSE streaming, key handling)
+tst_security     38 passed   (sanitizer envelope, risk classifier, secret redactor, permission matrix)
+tst_browsercore  10 passed   (URL resolution, settings roundtrip, history, bookmarks, tab lifecycle)
+tst_agent         8 passed   (tool validation, dispatch errors, full agent loop with mock model,
+                              approval gate, readonly deny, malformed-model recovery)
+ctest: 100% tests passed (4 suites, 66 test functions)
+```
 
 ## Build
 
@@ -50,6 +81,8 @@ QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 ctest --test-dir build --out
 ```
 
 `--selftest` starts the app and exits after successful startup (used in CI).
+Qt 6.11 on some systems logs to the journal by default; the
+`QT_FORCE_STDERR_LOGGING=1` environment variable restores stderr logs.
 
 ## Configuration
 
@@ -76,6 +109,16 @@ licenses, see Qt's attribution). Moch's own code reuses nothing from Falkon
 - Linux only for now (Wayland and X11). Packaging beyond Arch is not done.
 - The optional headless engine (e.g. Lightpanda over CDP) is a settings
   placeholder; v1 automation drives the visible browser only.
-- No extensions, no profiles manager, no sync.
-- Very long pages are truncated before being sent to the model (cap is
-  configurable in code).
+- No extensions, no multi-profile manager, no sync.
+- Very long pages are truncated before being sent to the model (default cap
+  24 000 chars for agent tools, 12 000 for sidebar chat).
+- The agent drives pages via dispatched DOM events, not trusted input
+  pipelines; a small number of sites that require isTrusted keyboard events
+  will not accept agent-typed text.
+- Streaming chat and the agent cannot run at the same time (one active task);
+  concurrent tasks are queued out by design.
+- Downloads are accepted into ~/Downloads without a per-download prompt
+  (setting exists, per-file dialog not yet wired).
+- The AI sidebar streams tokens but does not yet render markdown; tool-call
+  streaming progress is shown at step granularity.
+

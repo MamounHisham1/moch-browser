@@ -189,3 +189,17 @@ downloadRequested → file in ~/Downloads with progress model.
   tests run with `QT_QPA_PLATFORM=offscreen`.
 - `QT_FORCE_STDERR_LOGGING=1` is required for log visibility on this machine (Qt 6.11
   defaults to the journal); dev scripts set it.
+
+## Implementation record (2026-10-25)
+
+All phases landed on main. Verified state: clean configure + build from
+scratch with gcc 16 / CMake 4.4 / Ninja; `ctest` 100% pass (4 suites,
+66 test functions: provider wire/stream, security sanitizer/classifier/
+redactor/policy, browser URL/settings/stores/tabs, agent loop with a mock
+model server incl. approval gate and readonly deny); `moch --selftest`
+green offscreen; window + new-tab page verified rendering on real Wayland.
+Measured: ~1.0 s startup to usable window, ~490 MB RSS with one tab
+(249 MB UI process + 4 Chromium helpers). Deviations from the original
+sketch: tools own the single `ToolSpec` definition (`ai/provider.hpp`
+includes `tools/tool.hpp`); mock model server lives in `tests/` and is
+shared by provider and agent suites.
