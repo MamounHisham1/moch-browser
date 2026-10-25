@@ -7,6 +7,7 @@ qt_add_executable(moch
     browser/webview.cpp browser/webview.hpp
     ui/mainwindow.cpp ui/mainwindow.hpp
     storage/settings.cpp storage/settings.hpp
+    security/contentsanitizer.cpp security/contentsanitizer.hpp
     resources/moch.qrc
 )
 
