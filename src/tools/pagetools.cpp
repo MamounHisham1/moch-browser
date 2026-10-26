@@ -452,9 +452,16 @@ public:
             done({false, "no_tab", "no such tab", {}});
             return;
         }
-        QMetaObject::Connection conn = view->connect(
+        const auto fired = std::make_shared<bool>(false);
+        const auto connPtr = std::make_shared<QMetaObject::Connection>();
+        *connPtr = view->connect(
             view, &QWebEngineView::loadFinished, view,
-            [done, view, url](bool ok) {
+            [done, view, url, fired, connPtr](bool ok) {
+                *fired = true;
+                if (*connPtr) {
+                    QObject::disconnect(*connPtr);
+                    *connPtr = {};
+                }
                 QJsonObject data;
                 data.insert("url", view->url().isEmpty() ? url.toString() : view->url().toString());
                 data.insert("title", view->title());
@@ -464,10 +471,14 @@ public:
             },
             static_cast<Qt::ConnectionType>(Qt::SingleShotConnection));
         view->load(url);
-        QTimer::singleShot(20000, view, [&conn, done, view]() {
-            if (!conn)
+        QTimer::singleShot(20000, view, [fired, connPtr, done, view]() {
+            if (*fired)
                 return;
-            disconnect(conn);
+            *fired = true;
+            if (*connPtr) {
+                QObject::disconnect(*connPtr);
+                *connPtr = {};
+            }
             QJsonObject data;
             data.insert("url", view->url().toString());
             done({false, "timeout", "navigation did not finish in 20s", data});
@@ -619,17 +630,16 @@ public:
 
         auto *poller = new QObject(view);
         auto *timer = new QTimer(poller);
-        auto *deadline = new QElapsedTimer();
+        const auto deadline = std::make_shared<QElapsedTimer>();
         deadline->start();
         QObject::connect(timer, &QTimer::timeout, poller, [poller, timer, deadline, view, script, literal, done] {
             view->page()->runJavaScript(script.arg(literal), 0,
                                         [poller, timer, deadline, done](const QVariant &result) {
                                             const QJsonObject data = QJsonDocument::fromJson(
                                                 result.toString().toUtf8()).object();
-                                            const auto finish = [&](const ToolResult &r) {
+                                            const auto finish = [poller, timer, deadline, done](const ToolResult &r) {
                                                 timer->stop();
                                                 poller->deleteLater();
-                                                delete deadline;
                                                 done(r);
                                             };
                                             if (data.contains("error")) {

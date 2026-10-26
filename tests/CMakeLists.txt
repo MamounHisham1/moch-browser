@@ -86,6 +86,10 @@ qt_add_executable(tst_agent
     ../src/tools/tool.cpp
     ../src/tools/toolregistry.cpp
     ../src/tools/pagetools.cpp
+    ../src/security/contentsanitizer.cpp
+    ../src/security/riskclassifier.cpp
+    ../src/security/secretredactor.cpp
+    ../src/security/permissionpolicy.cpp
 )
 
 target_include_directories(tst_agent PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
@@ -117,4 +121,38 @@ target_link_libraries(tst_setup PRIVATE
 add_test(NAME tst_setup COMMAND tst_setup)
 set_tests_properties(tst_setup PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+)
+
+qt_add_executable(tst_navtool
+    tst_navtool.cpp
+    ../src/browser/bookmarkstore.cpp ../src/browser/bookmarkstore.hpp
+    ../src/browser/historystore.cpp ../src/browser/historystore.hpp
+    ../src/browser/tabmanager.cpp ../src/browser/tabmanager.hpp
+    ../src/browser/newtabbridge.cpp ../src/browser/newtabbridge.hpp
+    ../src/browser/setupbridge.cpp ../src/browser/setupbridge.hpp
+    ../src/browser/openrouterauth.cpp ../src/browser/openrouterauth.hpp
+    ../src/ai/modelcatalog.cpp ../src/ai/modelcatalog.hpp
+    ../src/browser/urlresolver.cpp ../src/browser/urlresolver.hpp
+    ../src/browser/webview.cpp ../src/browser/webview.hpp
+    ../src/storage/database.cpp ../src/storage/database.hpp
+    ../src/storage/settings.cpp ../src/storage/settings.hpp
+    ../src/tools/tool.cpp
+    ../src/tools/toolregistry.cpp
+    ../src/tools/pagetools.cpp
+    ../src/security/contentsanitizer.cpp
+    ../src/security/riskclassifier.cpp
+    ../src/security/secretredactor.cpp
+    ../src/security/permissionpolicy.cpp
+)
+
+target_include_directories(tst_navtool PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+target_link_libraries(tst_navtool PRIVATE
+    Qt6::Core Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Sql Qt6::WebChannel Qt6::Test
+)
+
+add_test(NAME tst_navtool COMMAND tst_navtool)
+set_tests_properties(tst_navtool PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+    TIMEOUT 90
 )
