@@ -173,6 +173,10 @@ void SecurityTest::riskClassifierTable_data()
         Risk::Safe, QString());
     row("https nav is safe", QStringLiteral("navigate_to_url"),
         QJsonObject{{"url", QStringLiteral("https://example.test")}}, Risk::Safe, QString());
+    row("site name is safe (tool resolves it)", QStringLiteral("navigate_to_url"),
+        QJsonObject{{"url", QStringLiteral("youtube")}}, Risk::Safe, QString());
+    row("bare domain is safe", QStringLiteral("navigate_to_url"),
+        QJsonObject{{"url", QStringLiteral("noon.com")}}, Risk::Safe, QString());
     row("file nav is sensitive", QStringLiteral("navigate_to_url"),
         QJsonObject{{"url", QStringLiteral("file:///etc/passwd")}}, Risk::Sensitive,
         QStringLiteral("file"));

@@ -75,13 +75,17 @@ ClassifyDetail classifyDetailed(const QString &toolName, const QJsonObject &args
     }
 
     if (tool == QLatin1String("navigate_to_url")) {
+        // Scheme-less targets ("youtube", "noon.com") are resolved by the tool
+        // to http(s); only an explicit non-web scheme is dangerous.
         const QString rawUrl = argString(args, "url");
         const QString scheme = QUrl(rawUrl).scheme().toLower();
-        const QStringList allowed = {QStringLiteral("http"), QStringLiteral("https"),
-                                     QStringLiteral("moch")};
-        if (!rawUrl.isEmpty() && !allowed.contains(scheme))
-            return sensitive(QStringLiteral("navigate_to_url scheme '%1' is not http/https/moch")
-                                 .arg(scheme.isEmpty() ? QStringLiteral("(none)") : scheme));
+        static const QStringList dangerous = {
+            QStringLiteral("file"), QStringLiteral("javascript"), QStringLiteral("data"),
+            QStringLiteral("blob"), QStringLiteral("chrome"), QStringLiteral("chrome-extension"),
+            QStringLiteral("view-source"), QStringLiteral("vbscript"),
+        };
+        if (dangerous.contains(scheme))
+            return sensitive(QStringLiteral("navigate_to_url uses non-web scheme '%1'").arg(scheme));
     }
 
     return {Risk::Safe, QStringLiteral("no sensitive indicators")};
