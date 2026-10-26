@@ -19,6 +19,7 @@ private slots:
     void initTestCase();
     void toolValidation();
     void toolDispatchErrors();
+    void toolsReachRealTabs();
     void agentCompletesWithToolCall();
     void agentApprovalFlow();
     void agentReadOnlyDenies();
@@ -107,6 +108,18 @@ void tst_agent::toolDispatchErrors()
                         [&](ToolResult result) { badScheme = result; });
     QVERIFY(!badScheme.ok);
     QCOMPARE(badScheme.errorCode, QString("bad_scheme"));
+}
+
+void tst_agent::toolsReachRealTabs()
+{
+    const int added = m_tabs->addTab(QUrl("data:text/html,<title>ToolTab</title>"));
+    QVERIFY(added >= 0);
+    ToolResult result;
+    m_registry->execute("get_tab_list", {}, [&](ToolResult r) { result = r; });
+    QVERIFY(result.ok);
+    QCOMPARE(result.data.value("tabs").toArray().size(), 1);
+    QCOMPARE(result.data.value("tabs").toArray().at(0).toObject().value("index").toInt(), added);
+    m_tabs->closeTab(added);
 }
 
 void tst_agent::agentCompletesWithToolCall()

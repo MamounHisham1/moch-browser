@@ -71,7 +71,7 @@ AiSidebar::AiSidebar(Settings *settings, TabManager *tabs, ToolRegistry *tools, 
     m_transcript->setReadOnly(true);
 
     m_input = new QLineEdit(this);
-    m_input->setPlaceholderText(tr("Ask, or type a task for the agent…"));
+    m_input->setPlaceholderText(tr("Ask about this page — or just give a task, e.g. open github.com"));
     connect(m_input, &QLineEdit::returnPressed, this, &AiSidebar::onSubmit);
 
     m_sendButton = new QPushButton(this);
@@ -159,10 +159,16 @@ void AiSidebar::onSubmit()
 
     const QString pageContext = currentPageContext();
 
-    if (text.startsWith("/ask")) {
+    const bool explicitTask = text.startsWith("/ask");
+    const QString taskText = explicitTask ? text.mid(4).trimmed() : text;
+    if (explicitTask || looksLikeTask(text)) {
         m_mode = Mode::Task;
-        appendMessage(tr("You"), text.mid(4).trimmed());
-        m_agent->startTask(text.mid(4).trimmed(), pageContext);
+        appendMessage(tr("You"), taskText);
+        if (!explicitTask)
+            appendHtml(QString("<div style=\"color:#8a8d94; font-size:11px; margin:2px 0 6px;\">"
+                               "Task detected — agent taking over. Prefix with /ask to force, "
+                               "or phrase as a question for plain chat.</div>"));
+        m_agent->startTask(taskText, pageContext);
         m_stopButton->setVisible(true);
         m_sendButton->setVisible(false);
         m_status->setText(tr("Agent: %1").arg(stateLabel(AgentService::State::Running)));
@@ -200,6 +206,29 @@ void AiSidebar::onSubmit()
     m_provider->chatStream(request, [this](ChatResponse response) {
         onChatFinished(response);
     });
+}
+
+bool AiSidebar::looksLikeTask(const QString &text) const
+{
+    const QString t = text.trimmed().toLower();
+    static const QRegularExpression urlRe(
+        "(https?://|www\\.|\\b[a-z0-9-]+\\.(com|net|org|io|dev|ai|app|co)\\b)",
+        QRegularExpression::CaseInsensitiveOption);
+    if (urlRe.match(t).hasMatch())
+        return true;
+    static const QStringList verbs = {
+        "go to", "open", "visit", "find", "search", "look up", "browse",
+        "click", "press", "tap", "fill", "submit", "buy", "order", "purchase",
+        "book", "compare", "check", "post", "tweet", "publish", "send",
+        "message", "email", "apply", "sign up", "sign in", "log in", "log out",
+        "download", "watch", "play", "follow", "subscribe", "scrape", "extract",
+        "track", "monitor", "navigate", "switch to", "close the tab", "new tab",
+    };
+    for (const QString &verb : verbs) {
+        if (t.startsWith(verb))
+            return true;
+    }
+    return false;
 }
 
 QString AiSidebar::currentPageContext() const

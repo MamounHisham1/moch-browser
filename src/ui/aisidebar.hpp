@@ -51,6 +51,7 @@ private:
     void finishAssistantBubble();
     void updateAssistantBubble();
     QString currentPageContext() const;
+    bool looksLikeTask(const QString &text) const;
 
     Settings *m_settings = nullptr;
     TabManager *m_tabs = nullptr;

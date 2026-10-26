@@ -77,7 +77,7 @@ protected:
 
     TabManager *tabManager() const
     {
-        return m_registry->findChild<TabManager *>();
+        return m_registry ? m_registry->tabs() : nullptr;
     }
 
     ToolRegistry *m_registry = nullptr;

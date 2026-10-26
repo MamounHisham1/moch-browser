@@ -14,6 +14,7 @@ public:
     explicit ToolRegistry(TabManager *tabs, QObject *parent = nullptr);
 
     void registerTool(Tool *tool);
+    TabManager *tabs() const { return m_tabs; }
     QList<ToolSpec> specs() const;
     bool validateArgs(const ToolSpec &spec, const QJsonObject &args, QString *error) const;
 
