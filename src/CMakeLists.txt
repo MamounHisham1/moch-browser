@@ -16,6 +16,7 @@ qt_add_executable(moch
     browser/urlresolver.cpp browser/urlresolver.hpp
     browser/webview.cpp browser/webview.hpp
     ui/aisidebar.cpp ui/aisidebar.hpp
+    ui/icons.cpp ui/icons.hpp
     ui/downloadspanel.cpp ui/downloadspanel.hpp
     ui/mainwindow.cpp ui/mainwindow.hpp
     ui/settingsdialog.cpp ui/settingsdialog.hpp
@@ -38,5 +39,5 @@ qt_add_executable(moch
 target_include_directories(moch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(moch PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Sql Qt6::WebChannel
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Sql Qt6::Svg Qt6::WebChannel
 )

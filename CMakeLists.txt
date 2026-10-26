@@ -11,7 +11,7 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Network Sql WebChannel Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets Network Sql WebChannel Svg Test)
 
 qt_standard_project_setup()
 

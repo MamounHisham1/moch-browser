@@ -25,6 +25,7 @@
 #include "tools/toolregistry.hpp"
 #include "ui/aisidebar.hpp"
 #include "ui/downloadspanel.hpp"
+#include "ui/icons.hpp"
 #include "ui/settingsdialog.hpp"
 #include "ui/tabbar.hpp"
 #include "ui/toolbar.hpp"
@@ -46,6 +47,11 @@ MainWindow::MainWindow(Settings *settings, TabManager *tabs, HistoryStore *histo
 
     m_toolRegistry = new ToolRegistry(m_tabs, this);
     m_aiSidebar = new AiSidebar(m_settings, m_tabs, m_toolRegistry, this);
+    connect(m_toolbar, &Toolbar::aiToggleRequested, this, [this] {
+        m_aiSidebar->setExpanded(!m_aiSidebar->isExpanded());
+    });
+    connect(m_aiSidebar, &AiSidebar::expandedChanged, m_toolbar,
+            &Toolbar::setAiExpanded);
 
     auto *container = new QWidget(this);
     auto *layout = new QHBoxLayout(container);
@@ -74,7 +80,7 @@ QWidget *MainWindow::buildFindBar()
 {
     m_findInput = new QLineEdit(this);
     m_findInput->setObjectName("findInput");
-    m_findInput->setPlaceholderText("Find in page");
+    m_findInput->setPlaceholderText(tr("Find in page"));
     m_findInput->setClearButtonEnabled(true);
     connect(m_findInput, &QLineEdit::textChanged, this, [this](const QString &text) {
         if (auto *page = m_tabs->currentView() ? m_tabs->currentView()->page() : nullptr)
@@ -85,15 +91,24 @@ QWidget *MainWindow::buildFindBar()
     m_findStatus = new QLabel(this);
 
     auto *previous = new QToolButton(this);
-    previous->setText("↑");
+    previous->setObjectName("iconButton");
+    previous->setProperty("iconName", "chevron-up");
+    previous->setToolTip(tr("Previous match"));
+    previous->setAutoRaise(true);
     connect(previous, &QToolButton::clicked, this, [this] { findNext(false); });
 
     auto *next = new QToolButton(this);
-    next->setText("↓");
+    next->setObjectName("iconButton");
+    next->setProperty("iconName", "chevron-down");
+    next->setToolTip(tr("Next match"));
+    next->setAutoRaise(true);
     connect(next, &QToolButton::clicked, this, [this] { findNext(true); });
 
     auto *close = new QToolButton(this);
-    close->setText("✕");
+    close->setObjectName("iconButton");
+    close->setProperty("iconName", "close");
+    close->setToolTip(tr("Close find bar (Esc)"));
+    close->setAutoRaise(true);
     connect(close, &QToolButton::clicked, this, &MainWindow::toggleFindBar);
 
     auto *bar = new QWidget(this);
@@ -297,24 +312,29 @@ void MainWindow::openSettings()
 
 void MainWindow::buildMenuButton()
 {
-    auto *menu = new QMenu(this);
-    QAction *newWindow = menu->addAction(tr("New Window\tCtrl+N"));
+    m_mainMenu = new QMenu(this);
+    QAction *newWindow = m_mainMenu->addAction(tr("New Window") + "\tCtrl+N");
+    newWindow->setProperty("iconName", "external");
     connect(newWindow, &QAction::triggered, this, &MainWindow::newWindowRequested);
-    menu->addSeparator();
-    QAction *history = menu->addAction(tr("History\tCtrl+H"));
+    QAction *history = m_mainMenu->addAction(tr("History") + "\tCtrl+H");
+    history->setProperty("iconName", "clock");
     connect(history, &QAction::triggered, this, &MainWindow::openHistory);
-    QAction *runSetup = menu->addAction(tr("Personalize Moch…"));
+    QAction *runSetup = m_mainMenu->addAction(tr("Personalize Moch…"));
+    runSetup->setProperty("iconName", "sparkles");
     connect(runSetup, &QAction::triggered, this, [this] {
         if (auto *view = m_tabs->currentView())
             view->load(QUrl("moch://setup"));
     });
-    QAction *askAi = menu->addAction(tr("AI Sidebar\tCtrl+I"));
+    QAction *askAi = m_mainMenu->addAction(tr("AI Sidebar") + "\tCtrl+I");
+    askAi->setProperty("iconName", "panel-right");
     connect(askAi, &QAction::triggered, this, [this] {
         m_aiSidebar->setExpanded(!m_aiSidebar->isExpanded());
     });
-    QAction *settings = menu->addAction(tr("Settings\tCtrl+,"));
+    m_mainMenu->addSeparator();
+    QAction *settings = m_mainMenu->addAction(tr("Settings") + "\tCtrl+,");
+    settings->setProperty("iconName", "settings");
     connect(settings, &QAction::triggered, this, &MainWindow::openSettings);
-    m_toolbar->setSettingsMenu(menu);
+    m_toolbar->setSettingsMenu(m_mainMenu);
 }
 
 void MainWindow::buildShortcuts()
@@ -412,9 +432,29 @@ void MainWindow::findNext(bool forward)
 
 void MainWindow::applyTheme()
 {
-    QFile qss(":/themes/" + m_settings->theme() + ".qss");
+    const QString theme = m_settings->theme();
+    QFile qss(":/themes/" + theme + ".qss");
     if (qss.open(QIODevice::ReadOnly))
         setStyleSheet(QString::fromUtf8(qss.readAll()));
     else
-        qWarning("moch: theme %s not found", qPrintable(m_settings->theme()));
+        qWarning("moch: theme %s not found", qPrintable(theme));
+    m_toolbar->applyTheme(theme);
+    m_tabBar->applyTheme(theme);
+    m_aiSidebar->applyTheme(theme);
+    applyMenuIcons();
+}
+
+void MainWindow::applyMenuIcons()
+{
+    const ThemeColors colors = ThemeColors::forTheme(m_settings->theme());
+    const auto menuIcons = [colors](QMenu *menu) {
+        if (!menu)
+            return;
+        for (QAction *action : menu->actions()) {
+            const QString name = action->property("iconName").toString();
+            if (!name.isEmpty())
+                action->setIcon(Icons::get(name, colors.icon, 16));
+        }
+    };
+    menuIcons(m_mainMenu);
 }

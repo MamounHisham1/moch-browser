@@ -18,6 +18,7 @@ public:
     void setTab(int index, const QString &title, const QIcon &icon);
     void removeLastTabs(int newCount);
     void setCurrentIndex(int index);
+    void applyTheme(const QString &theme);
 
 signals:
     void currentTabChanged(int index);

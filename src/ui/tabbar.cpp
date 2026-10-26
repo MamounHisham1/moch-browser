@@ -7,6 +7,8 @@
 #include <QTabBar>
 #include <QToolButton>
 
+#include "ui/icons.hpp"
+
 namespace {
 class PressAwareTabBar : public QTabBar
 {
@@ -44,16 +46,20 @@ TabBar::TabBar(QWidget *parent)
     });
 
     m_newTabButton = new QToolButton(this);
-    m_newTabButton->setText("+");
     m_newTabButton->setObjectName("newTabButton");
-    m_newTabButton->setToolTip("New tab (Ctrl+T)");
+    m_newTabButton->setIcon(Icons::get("plus", ThemeColors::forTheme("dark").icon, 16));
+    m_newTabButton->setToolTip(tr("New tab (Ctrl+T)"));
+    m_newTabButton->setAutoRaise(true);
+    m_newTabButton->setFixedSize(30, 28);
+    m_newTabButton->setIconSize(QSize(16, 16));
     connect(m_newTabButton, &QToolButton::clicked, this, &TabBar::newTabRequested);
 
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
-    layout->addWidget(m_tabs, 1);
-    layout->addWidget(m_newTabButton);
+    layout->setContentsMargins(2, 0, 0, 0);
+    layout->setSpacing(2);
+    layout->addWidget(m_tabs);
+    layout->addWidget(m_newTabButton, 0, Qt::AlignVCenter);
+    layout->addStretch(1);
 
     connect(m_tabs, &QTabBar::currentChanged, this, [this](int index) {
         if (!m_syncing)
@@ -103,6 +109,11 @@ void TabBar::setCurrentIndex(int index)
     m_syncing = true;
     m_tabs->setCurrentIndex(index);
     m_syncing = false;
+}
+
+void TabBar::applyTheme(const QString &theme)
+{
+    m_newTabButton->setIcon(Icons::get("plus", ThemeColors::forTheme(theme).icon, 16));
 }
 
 void TabBar::showContextMenu(const QPoint &pos)

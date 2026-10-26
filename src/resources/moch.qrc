@@ -4,6 +4,32 @@
         <file alias="dark.qss">dark.qss</file>
         <file alias="light.qss">light.qss</file>
     </qresource>
+    <qresource prefix="/icons">
+        <file alias="arrow-left.svg">icons/arrow-left.svg</file>
+        <file alias="arrow-right.svg">icons/arrow-right.svg</file>
+        <file alias="reload.svg">icons/reload.svg</file>
+        <file alias="close.svg">icons/close.svg</file>
+        <file alias="plus.svg">icons/plus.svg</file>
+        <file alias="star.svg">icons/star.svg</file>
+        <file alias="star-filled.svg">icons/star-filled.svg</file>
+        <file alias="download.svg">icons/download.svg</file>
+        <file alias="settings.svg">icons/settings.svg</file>
+        <file alias="menu.svg">icons/menu.svg</file>
+        <file alias="sparkles.svg">icons/sparkles.svg</file>
+        <file alias="panel-right.svg">icons/panel-right.svg</file>
+        <file alias="lock.svg">icons/lock.svg</file>
+        <file alias="alert.svg">icons/alert.svg</file>
+        <file alias="globe.svg">icons/globe.svg</file>
+        <file alias="chevron-up.svg">icons/chevron-up.svg</file>
+        <file alias="chevron-down.svg">icons/chevron-down.svg</file>
+        <file alias="search.svg">icons/search.svg</file>
+        <file alias="clock.svg">icons/clock.svg</file>
+        <file alias="bookmark.svg">icons/bookmark.svg</file>
+        <file alias="trash.svg">icons/trash.svg</file>
+        <file alias="external.svg">icons/external.svg</file>
+        <file alias="check.svg">icons/check.svg</file>
+        <file alias="tab-close.svg">icons/tab-close.svg</file>
+    </qresource>
     <qresource prefix="/pages">
         <file alias="newtab.html">newtab.html</file>
         <file alias="setup.html">setup.html</file>

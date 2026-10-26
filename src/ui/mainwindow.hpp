@@ -5,6 +5,7 @@
 
 class AiSidebar;
 class QLabel;
+class QMenu;
 class QLineEdit;
 class BookmarkStore;
 class DownloadManager;
@@ -40,6 +41,7 @@ signals:
 
 private:
     QWidget *buildFindBar();
+    void applyMenuIcons();
     void connectTabs();
     void buildShortcuts();
     void buildMenuButton();
@@ -61,6 +63,7 @@ private:
     DownloadManager *m_downloads = nullptr;
     DownloadsPanel *m_downloadsPanel = nullptr;
     ToolRegistry *m_toolRegistry = nullptr;
+    QMenu *m_mainMenu = nullptr;
     AiSidebar *m_aiSidebar = nullptr;
     QWidget *m_findBar = nullptr;
     QLineEdit *m_findInput = nullptr;

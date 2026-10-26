@@ -9,6 +9,7 @@
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QToolButton;
 class QVBoxLayout;
 class Settings;
 class TabManager;
@@ -25,6 +26,7 @@ public:
 
     bool isExpanded() const { return m_expanded; }
     void setExpanded(bool expanded);
+    void applyTheme(const QString &theme);
 
 signals:
     void expandedChanged(bool expanded);
@@ -59,6 +61,8 @@ private:
     QPushButton *m_stopButton = nullptr;
     QPushButton *m_approveButton = nullptr;
     QPushButton *m_denyButton = nullptr;
+    QLabel *m_title = nullptr;
+    QToolButton *m_closeButton = nullptr;
     QString m_streamBuffer;
     bool m_streamActive = false;
 };

@@ -23,6 +23,8 @@ public:
     void setDownloadBadge(int activeCount, int percent);
     void setSettingsMenu(QMenu *menu);
     void setBookmarksMenu(QMenu *menu);
+    void setAiExpanded(bool expanded);
+    void applyTheme(const QString &theme);
 
 signals:
     void backRequested();
@@ -32,10 +34,11 @@ signals:
     void navigateRequested(const QString &input);
     void bookmarkToggleRequested();
     void downloadsPanelRequested();
+    void aiToggleRequested();
 
 private:
-    QToolButton *makeButton(const QString &glyph);
-    void syncReloadStop();
+    QToolButton *makeButton(const QString &iconName);
+    void applyButtonIcons();
 
     QLineEdit *m_address = nullptr;
     QAction *m_security = nullptr;
@@ -44,8 +47,12 @@ private:
     QToolButton *m_reloadStop = nullptr;
     QToolButton *m_bookmarks = nullptr;
     QToolButton *m_downloads = nullptr;
+    QToolButton *m_ai = nullptr;
     QToolButton *m_settings = nullptr;
     bool m_loading = false;
+    bool m_bookmarked = false;
+    bool m_aiExpanded = false;
     int m_activeDownloads = 0;
     int m_downloadPercent = -1;
+    QString m_theme = "dark";
 };

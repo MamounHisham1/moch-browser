@@ -52,14 +52,23 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; }
 }
 .card:hover { background: var(--hover); transform: translateY(-1px); }
 .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-.card .emoji { font-size: 24px; }
+.cicon {
+  width: 38px; height: 38px; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent2);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 10px;
+}
+.cicon svg { width: 21px; height: 21px; }
+.card.selected .cicon { background: var(--accent); color: #fff; }
 .card .t { font-weight: 600; font-size: 14px; margin-top: 8px; }
 .card .d { color: var(--muted); font-size: 12px; margin-top: 3px; line-height: 1.35; }
 .card .check {
   position: absolute; top: 10px; right: 10px; width: 20px; height: 20px;
-  border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px;
+  border-radius: 50%; background: var(--accent);
   display: none; align-items: center; justify-content: center;
 }
+.card .check svg { width: 12px; height: 12px; }
 .card.selected .check { display: flex; }
 
 .uc-section { margin-bottom: 22px; }
@@ -173,7 +182,7 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; }
     <div class="step-dot" id="dot3"><span class="n">3</span> AI model</div>
     <div class="line"></div>
     <div class="step-dot" id="dot4"><span class="n">4</span> Done</div>
-    <span id="buildTag" style="margin-left:auto;font-size:11px;color:var(--muted)">setup v6</span>
+    <span id="buildTag" style="display:none">v7</span>
   </div>
 
   <section id="step1">
@@ -309,18 +318,45 @@ function setStep(n) {
   window.scrollTo(0, 0);
 }
 
+const ICONS = {
+  briefcase: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13.5 13.5 0 0 1 0 18M12 3a13.5 13.5 0 0 0 0 18"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  bag: '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+  flask: '<path d="M10 2v6.5L4.3 19.4A1 1 0 0 0 5.2 21h13.6a1 1 0 0 0 .9-1.6L14 8.5V2"/><path d="M8.5 2h7"/><path d="M7 15h10"/>',
+  news: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h7M7 12h10M7 16h10M14 8h3"/>',
+  plane: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
+  grad: '<path d="m22 10-10-5L2 10l10 5 10-5z"/><path d="M6 12v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/>',
+  card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+  laptop: '<rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+  home: '<path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22v-8h6v8"/>',
+  food: '<path d="M4 2v7a3 3 0 0 0 6 0V2"/><path d="M7 2v20"/><path d="M19 2c-2 0-3 2.5-3 5.5s1 4.5 3 4.5v10"/>',
+  film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4"/>',
+  code: '<path d="m8 8-5 4 5 4M16 8l5 4-5 4M13.5 5l-3 14"/>',
+  pulse: '<path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3.4 1-4.5 2.5C10.9 4 9.3 3 7.5 3A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"/><path d="M8 12h2l1.5-3 2 6 1.5-3h3"/>',
+  sparkles: '<path d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"/><path d="M19 3v4M21 5h-4"/>',
+};
+
+function svgIcon(name, cls) {
+  const div = document.createElement('div');
+  div.className = cls;
+  div.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+    + (ICONS[name] || ICONS.sparkles) + '</svg>';
+  return div;
+}
+
 function renderUses() {
   const grid = $('useGrid');
   grid.textContent = '';
   for (const uc of state.useCases) {
     const card = document.createElement('div');
     card.className = 'card' + (state.selected.has(uc.id) ? ' selected' : '');
-    const emoji = document.createElement('div');
-    emoji.className = 'emoji'; emoji.textContent = uc.emoji;
+    const icon = svgIcon(uc.icon, 'cicon');
     const t = document.createElement('div'); t.className = 't'; t.textContent = uc.title;
     const d = document.createElement('div'); d.className = 'd'; d.textContent = uc.description;
-    const check = document.createElement('div'); check.className = 'check'; check.textContent = '✓';
-    card.append(emoji, t, d, check);
+    const check = document.createElement('div'); check.className = 'check';
+    check.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>';
+    card.append(icon, t, d, check);
     card.addEventListener('click', () => {
       state.selected.has(uc.id) ? state.selected.delete(uc.id) : state.selected.add(uc.id);
       card.classList.toggle('selected');
@@ -352,7 +388,8 @@ function renderPlatforms() {
     for (const p of uc.platforms) {
       const chip = document.createElement('div');
       chip.className = 'chip' + (state.signed.has(p.id) ? ' signed' : '');
-      const tick = document.createElement('div'); tick.className = 'tick'; tick.textContent = '✓';
+      const tick = document.createElement('div'); tick.className = 'tick';
+      tick.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><path d="m5 13 4 4L19 7"/></svg>';
       tick.title = 'Mark as signed in';
       tick.addEventListener('click', () => {
         const on = !state.signed.has(p.id);
