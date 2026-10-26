@@ -276,7 +276,9 @@ void AiSidebar::renderTranscript()
         "p, table { margin: 0; }"
         "td { font-size: 13px; }"
         "</style></head><body>%1</body></html>").arg(body));
-    m_transcript->verticalScrollBar()->setValue(m_transcript->verticalScrollBar()->maximum());
+    // scroll after the document lays out, not before
+    QScrollBar *bar = m_transcript->verticalScrollBar();
+    QTimer::singleShot(0, bar, [bar] { bar->setValue(bar->maximum()); });
 }
 
 void AiSidebar::appendMessage(const QString &role, const QString &text)
