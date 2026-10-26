@@ -218,8 +218,8 @@ public:
             "})()");
         QString source = script.arg(kMaxElements);
         source.replace(QStringLiteral("SELECTOR"),
-                       QString("JSON.parse(%1)").arg(
-                           QString(QJsonDocument(QJsonArray{selector}).toJson()) + QLatin1String("[0]")));
+                       QString::fromUtf8(QJsonDocument(QJsonArray{selector}).toJson())
+                           + QLatin1String("[0]"));
         view->page()->runJavaScript(source, 0, [done](const QVariant &result) {
             const QJsonObject data = QJsonDocument::fromJson(result.toString().toUtf8()).object();
             if (data.contains("error")) {

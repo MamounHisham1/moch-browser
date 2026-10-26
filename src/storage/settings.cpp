@@ -12,7 +12,7 @@ static const QJsonObject defaultValues()
     QJsonObject agent;
     agent.insert("permission_level", "cautious");
     agent.insert("max_task_seconds", 300);
-    agent.insert("max_tool_calls", 40);
+    agent.insert("max_tool_calls", 80);
     agent.insert("confirm_downloads", true);
 
     QJsonObject ai;

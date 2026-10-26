@@ -83,7 +83,7 @@ void tst_browsercore::settingsDefaultsAndRoundtrip()
     Settings fresh;
     QCOMPARE(fresh.theme(), QString("dark"));
     QCOMPARE(fresh.get("agent.permission_level").toString(), QString("cautious"));
-    QCOMPARE(fresh.get("agent.max_tool_calls").toInt(), 40);
+    QCOMPARE(fresh.get("agent.max_tool_calls").toInt(), 80);
     QCOMPARE(fresh.get("ai.temperature").toDouble(), 0.2);
 
     fresh.set("agent.max_tool_calls", 77);
