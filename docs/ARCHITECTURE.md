@@ -190,6 +190,27 @@ downloadRequested → file in ~/Downloads with progress model.
 - `QT_FORCE_STDERR_LOGGING=1` is required for log visibility on this machine (Qt 6.11
   defaults to the journal); dev scripts set it.
 
+## Setup wizard (2026-10-26)
+
+`moch://setup` serves a 4-step onboarding page (use cases → platform
+sign-in → AI model → summary) through the same WebChannel pattern as the
+new-tab page. The bridge (`browser/setupbridge.*`) owns a static registry
+of 16 use cases and ~70 platforms with real login URLs; selections persist
+to Settings immediately. Model data comes from OpenRouter's public catalog
+(`ai/modelcatalog.*`, 12 s timeout, curated offline fallback).
+OpenRouter desktop OAuth (`browser/openrouterauth.*`): loopback QTcpServer
+catches the ?code= redirect and exchanges it for a key at
+/api/v1/auth/keys. First run shows the wizard when `setup_complete` is
+false; the agent system prompt includes the chosen use cases.
+
+WebChannel contract that cost a debugging session: invokables WITH return
+values arrive in JS as Promises (must be awaited); signal payloads arrive
+as plain values; register signal handlers before any await. Both pages
+follow it; keep it that way. AUTORCC does not always notice .html-only
+edits — `touch src/resources/moch.qrc` before rebuilding, and verify with
+the on-page build tag rather than grepping the binary (resources are
+zstd-compressed).
+
 ## Implementation record (2026-10-25)
 
 All phases landed on main. Verified state: clean configure + build from
@@ -198,6 +219,10 @@ scratch with gcc 16 / CMake 4.4 / Ninja; `ctest` 100% pass (4 suites,
 redactor/policy, browser URL/settings/stores/tabs, agent loop with a mock
 model server incl. approval gate and readonly deny); `moch --selftest`
 green offscreen; window + new-tab page verified rendering on real Wayland.
+Wizard verified live via CDP remote debugging (2026-10-26): 16 cards render,
+LinkedIn sign-in navigates to the real login page, 467 live OpenRouter
+models load, "Enter Moch" persists setup_complete and lands on the new-tab
+page with populated sections.
 Measured: ~1.0 s startup to usable window, ~490 MB RSS with one tab
 (249 MB UI process + 4 Chromium helpers). Deviations from the original
 sketch: tools own the single `ToolSpec` definition (`ai/provider.hpp`

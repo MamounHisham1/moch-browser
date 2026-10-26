@@ -11,11 +11,25 @@ tools — never with unrestricted access to your machine, cookies, or files.
 
 ## Status
 
-Working build (verified 2026-10-25, Arch Linux, Qt 6.11.2): 4 test suites,
-66 test functions, all passing via ctest; app selftest green; verified
-rendering on Wayland. Phase tracking and the architectural record live in
+Working build (verified 2026-10-26, Arch Linux, Qt 6.11.2): 5 test suites,
+74 test functions, all passing via ctest; app selftest green; wizard and
+new-tab flows verified live via CDP against the real window. Phase tracking
+and the architectural record live in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Known limitations are listed at
 the bottom of this file.
+
+## First-run setup
+
+On first launch Moch opens a setup wizard (`moch://setup`, reopenable from
+the menu via "Personalize Moch…"): pick what you want Moch for (16
+categories — job hunting, socials, email, shopping, research, news, travel,
+learning, finance, freelance, real estate, food, entertainment, dev, sports,
+custom), sign in to the platforms you use (the real login page opens in
+Moch; passwords stay between you and the site), then pick an AI model — the
+OpenRouter catalog loads live (400+ models, free ones badged) with one-key
+OAuth or paste, or connect a provider directly (OpenAI, DeepSeek, Groq,
+Mistral, Together, xAI, Ollama, LM Studio, custom). Your selections feed the
+agent's context.
 
 ## Features
 
@@ -59,7 +73,9 @@ tst_security     38 passed   (sanitizer envelope, risk classifier, secret redact
 tst_browsercore  10 passed   (URL resolution, settings roundtrip, history, bookmarks, tab lifecycle)
 tst_agent         8 passed   (tool validation, dispatch errors, full agent loop with mock model,
                               approval gate, readonly deny, malformed-model recovery)
-ctest: 100% tests passed (4 suites, 66 test functions)
+tst_setup         8 passed   (model catalog parsing, use-case registry, bridge roundtrip,
+                              API key storage, OAuth callback server)
+ctest: 100% tests passed (5 suites, 74 test functions)
 ```
 
 ## Build
