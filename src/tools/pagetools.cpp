@@ -9,6 +9,7 @@
 #include <QWebEnginePage>
 
 #include "browser/tabmanager.hpp"
+#include "browser/urlresolver.hpp"
 #include "browser/webview.hpp"
 #include "security/contentsanitizer.hpp"
 
@@ -437,14 +438,18 @@ public:
     ToolSpec spec() const override
     {
         return {"navigate_to_url",
-                "Navigate a tab to an http(s) URL and wait for the load to settle.",
+                "Navigate a tab and wait for the load to settle. Accepts a full URL, a "
+                "domain (noon.com), or a well-known site name (youtube, gmail, whatsapp, "
+                "noon). Phrases are searched on the web.",
                 toolParams({{"url", "string"}, {"tab_index", "number"}}, {"url"})};
     }
     void execute(const QJsonObject &args, std::function<void(ToolResult)> done) override
     {
-        const QUrl url(args.value("url").toString());
+        const QUrl url =
+            UrlResolver::resolveAgentTarget(args.value("url").toString(), "duckduckgo");
         if (url.scheme() != "http" && url.scheme() != "https") {
-            done({false, "bad_scheme", "only http and https navigation is allowed", {}});
+            done({false, "bad_scheme",
+                  "only web destinations are allowed; pass a URL, domain, or site name", {}});
             return;
         }
         WebView *view = resolveTab(args);

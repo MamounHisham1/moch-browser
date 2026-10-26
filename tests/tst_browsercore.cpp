@@ -19,6 +19,7 @@ class tst_browsercore : public QObject
 private slots:
     void urlDetection();
     void urlSearchFallback();
+    void agentTargetResolution();
     void searchEngines();
     void settingsDefaultsAndRoundtrip();
     void historyRecordAndSearch();
@@ -57,6 +58,26 @@ void tst_browsercore::urlDetection()
              QString("http://localhost"));
     QCOMPARE(UrlResolver::fromUserInput("moch://newtab", "duckduckgo").toString(),
              QString("moch://newtab"));
+}
+
+void tst_browsercore::agentTargetResolution()
+{
+    struct Case { const char *in; const char *want; } cases[] = {
+        {"youtube", "https://www.youtube.com"},
+        {"GMAIL", "https://mail.google.com"},
+        {"whatsapp", "https://web.whatsapp.com"},
+        {"x", "https://x.com"},
+        {"noon", "https://www.noon.com/egypt-en/"},
+        {"example.com", "https://example.com"},
+        {"https://already.full", "https://already.full"},
+        {"somebrandname", "https://somebrandname.com"},
+    };
+    for (const Case &c : cases)
+        QCOMPARE(UrlResolver::resolveAgentTarget(QString::fromLatin1(c.in), "duckduckgo")
+                     .toString(),
+                 QString::fromLatin1(c.want));
+    const QUrl phrase = UrlResolver::resolveAgentTarget("best kitchen knives", "duckduckgo");
+    QCOMPARE(phrase.host(), QString("duckduckgo.com"));
 }
 
 void tst_browsercore::urlSearchFallback()
