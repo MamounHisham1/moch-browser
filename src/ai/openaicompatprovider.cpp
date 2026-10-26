@@ -31,8 +31,11 @@ QNetworkReply *OpenAiCompatProvider::sendRequest(const ChatRequest &request, boo
     const QString key = m_settings->apiKey();
     if (key.isEmpty()) {
         ChatResponse response;
-        response.error = "no_api_key: no model API key configured. Set the MOCH_API_KEY "
-                         "environment variable or store one in ~/.local/share/moch/secret.";
+        response.error = QString("no_api_key: no model API key configured. Add your key in "
+                                 "Moch's Settings dialog (Ctrl+,) or set the %1 environment "
+                                 "variable. Key file location: %2")
+                             .arg(m_settings->get("ai.api_key_env", "MOCH_API_KEY").toString(),
+                                  m_settings->secretPath());
         finishState(state, response);
         return nullptr;
     }

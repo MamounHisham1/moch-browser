@@ -44,6 +44,12 @@ private slots:
 
 private:
     void appendMessage(const QString &role, const QString &text);
+    void appendHtml(const QString &html);
+    void renderTranscript();
+    QString bubbleHtml(const QString &inner) const;
+    void beginAssistantBubble();
+    void finishAssistantBubble();
+    void updateAssistantBubble();
     QString currentPageContext() const;
 
     Settings *m_settings = nullptr;
@@ -64,5 +70,8 @@ private:
     QLabel *m_title = nullptr;
     QToolButton *m_closeButton = nullptr;
     QString m_streamBuffer;
+    QString m_streamBufferHtml;
+    QString m_transcriptBody;
+    bool m_streamingBubble = false;
     bool m_streamActive = false;
 };

@@ -190,7 +190,7 @@ void AiSidebar::onSubmit()
     question.content = text;
     request.messages.append(question);
 
-    appendMessage(tr("Assistant"), QString());
+    beginAssistantBubble();
     m_streamActive = true;
     m_streamBuffer.clear();
     m_sendButton->setEnabled(false);
@@ -220,14 +220,101 @@ QString AiSidebar::currentPageContext() const
     return sanitized.text;
 }
 
+void AiSidebar::appendHtml(const QString &html)
+{
+    m_transcriptBody += html;
+    if (m_transcriptBody.size() > 200000)
+        m_transcriptBody.remove(0, 60000);
+    renderTranscript();
+}
+
+void AiSidebar::renderTranscript()
+{
+    QString body = m_transcriptBody;
+    if (m_streamingBubble) {
+        const QString content = m_streamBufferHtml.isEmpty()
+                                    ? QStringLiteral("<span style=\"color:#8a8d94; font-style:italic;\">Thinking…</span>")
+                                    : m_streamBufferHtml;
+        body += QString(
+            "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr>"
+            "<td width=\"4%\"></td>"
+            "<td bgcolor=\"#1f2127\" style=\"padding:8px 12px;\">"
+            "<span style=\"color:#e4e6ea;\">%1</span><span style=\"color:#5b8def;\">▍</span></td>"
+            "<td width=\"18%\"></td></tr></table>").arg(content);
+    }
+    m_transcript->setHtml(QStringLiteral(
+        "<html><head><style>"
+        "p, table { margin: 0; }"
+        "td { font-size: 13px; }"
+        "</style></head><body>%1</body></html>").arg(body));
+    m_transcript->verticalScrollBar()->setValue(m_transcript->verticalScrollBar()->maximum());
+}
+
 void AiSidebar::appendMessage(const QString &role, const QString &text)
 {
-    if (role == tr("Assistant") && text.isEmpty()) {
-        m_transcript->append(QString("<b>%1</b> <span id=\"streaming\"></span>").arg(role));
-        return;
-    }
     const QString escaped = QString(text).toHtmlEscaped().replace('\n', "<br>");
-    m_transcript->append(QString("<b>%1</b><br>%2").arg(role, escaped));
+    if (role == tr("You")) {
+        appendHtml(bubbleHtml(QString(
+            "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr>"
+            "<td width=\"18%\"></td>"
+            "<td bgcolor=\"#2c3746\" style=\"padding:8px 12px; border-radius:4px;\">"
+            "<span style=\"color:#dbe4f0;\">%1</span></td>"
+            "<td width=\"4%\"></td></tr></table>").arg(escaped)));
+    } else if (role == tr("Error")) {
+        appendHtml(QString(
+            "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr>"
+            "<td bgcolor=\"#3a2426\" style=\"padding:8px 12px;\">"
+            "<span style=\"color:#f0b6b6; font-size:12px;\">%1</span></td>"
+            "</tr></table><br>").arg(escaped));
+    } else if (role == tr("Approval")) {
+        appendHtml(QString(
+            "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr>"
+            "<td bgcolor=\"#39321e\" style=\"padding:8px 12px;\">"
+            "<span style=\"color:#efe0ac; font-size:12px;\">%1</span></td>"
+            "</tr></table>").arg(escaped));
+    } else {
+        appendHtml(bubbleHtml(QString(
+            "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr>"
+            "<td width=\"4%\"></td>"
+            "<td bgcolor=\"#1f2127\" style=\"padding:8px 12px;\">"
+            "<span style=\"color:#e4e6ea;\">%1</span></td>"
+            "<td width=\"18%\"></td></tr></table><br>").arg(escaped)));
+    }
+}
+
+void AiSidebar::beginAssistantBubble()
+{
+    m_streamBuffer.clear();
+    m_streamingBubble = true;
+    renderTranscript();
+}
+
+QString AiSidebar::bubbleHtml(const QString &inner) const
+{
+    return QString(
+        "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\"><tr>"
+        "<td width=\"4%\"></td>"
+        "<td bgcolor=\"#1f2127\" style=\"padding:8px 12px;\">"
+        "<span style=\"color:#e4e6ea;\">%1</span></td>"
+        "<td width=\"18%\"></td></tr></table><br>").arg(inner);
+}
+
+void AiSidebar::updateAssistantBubble()
+{
+    const QString escaped = QString(m_streamBuffer).toHtmlEscaped().replace('\n', "<br>");
+    m_streamBufferHtml = escaped;
+    renderTranscript();
+}
+
+void AiSidebar::finishAssistantBubble()
+{
+    if (!m_streamingBubble)
+        return;
+    if (!m_streamBufferHtml.isEmpty())
+        m_transcriptBody += bubbleHtml(m_streamBufferHtml);
+    m_streamingBubble = false;
+    m_streamBufferHtml.clear();
+    renderTranscript();
 }
 
 void AiSidebar::onStreamDelta(const QString &delta)
@@ -235,8 +322,7 @@ void AiSidebar::onStreamDelta(const QString &delta)
     if (!m_streamActive)
         return;
     m_streamBuffer += delta;
-    m_transcript->setPlainText(m_transcript->toPlainText().trimmed() + delta);
-    m_transcript->verticalScrollBar()->setValue(m_transcript->verticalScrollBar()->maximum());
+    updateAssistantBubble();
 }
 
 void AiSidebar::onChatFinished(const ChatResponse &response)
@@ -245,10 +331,12 @@ void AiSidebar::onChatFinished(const ChatResponse &response)
     m_streamActive = false;
     m_sendButton->setEnabled(true);
     if (!response.error.isEmpty()) {
+        finishAssistantBubble();
         m_status->setText(response.error);
         appendMessage(tr("Error"), response.error);
         return;
     }
+    finishAssistantBubble();
     m_status->setText(tr("Ready."));
 }
 
@@ -277,10 +365,11 @@ void AiSidebar::onAgentStep(const AgentService::StepRecord &record)
     else
         label = record.label;
     const QString detail = record.detail.isEmpty() ? QString()
-                                                   : QString("<br><small>%1</small>")
+                                                   : QString("<br><small style=\"color:#8a8d94;\">%1</small>")
                                                          .arg(QString(record.detail).toHtmlEscaped());
-    m_transcript->append(QString("<span style=\"color:%1\">●</span> %2%3")
-                             .arg(record.ok ? "#6fbf73" : "#e06c6c", label, detail));
+    appendHtml(QString("<div><span style=\"color:%1; font-size:11px;\">●</span> "
+                       "<span style=\"color:#b9bcc3; font-size:12px;\">%2</span>%3</div>")
+                   .arg(record.ok ? "#6fbf73" : "#e06c6c", label, detail));
 }
 
 void AiSidebar::onAgentFinished(AgentService::State state, const QString &summary)

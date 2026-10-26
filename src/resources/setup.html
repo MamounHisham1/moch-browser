@@ -215,48 +215,46 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; }
 
   <section id="step3" class="hidden">
     <div class="head">
-      <h1>Pick your AI model</h1>
-      <p class="sub">OpenRouter gives you one key for every major model — OpenAI, Anthropic,
-      Google, Meta, Mistral, DeepSeek and more. Or connect a provider directly, including local
-      ones like Ollama.</p>
+      <h1>Choose your AI provider</h1>
+      <p class="sub">Every major provider is here. OpenRouter-backed ones share a single key;
+      Ollama, LM Studio and others connect directly — including local models. Pick one, then
+      pick the model.</p>
     </div>
-    <div class="modes">
-      <div class="mode selected" id="modeOpenRouter">
-        <div class="t">OpenRouter <span class="badge" style="background:rgba(91,141,239,.15);color:var(--accent2)">Recommended</span></div>
-        <div class="d">One key, all models. Free models available.</div>
-      </div>
-      <div class="mode" id="modeDirect">
-        <div class="t">Direct provider</div>
-        <div class="d">OpenAI, Groq, DeepSeek, Ollama, LM Studio…</div>
-      </div>
+    <div id="providerPane">
+      <input class="search" id="providerSearch" type="text" placeholder="Search providers — OpenAI, Anthropic, Google, Ollama…">
+      <div class="grid" id="providerGrid" style="grid-template-columns:repeat(4,1fr)"></div>
+      <div class="status" id="pStatus"></div>
     </div>
 
-    <div id="openRouterPane">
-      <input class="search" id="modelSearch" type="text" placeholder="Search 300+ models — try “claude”, “gpt”, “free”…">
-      <div class="models" id="modelList"><div class="empty">Loading models…</div></div>
-      <div class="keyrow">
-        <input id="orKey" type="password" placeholder="Paste your OpenRouter key (sk-or-…)">
-        <button class="btn secondary" id="orOauth">Sign in with OpenRouter</button>
-        <button class="btn" id="orSave">Save key</button>
+    <div id="modelPane" class="hidden">
+      <div class="uc-head" style="margin:14px 0 8px">
+        <button class="btn ghost" id="backToProviders" style="padding:5px 10px">← Providers</button>
+        <span class="t" id="providerTitle" style="font-weight:600"></span>
+        <span class="d" id="providerKind"></span>
       </div>
-      <p class="note">No account yet? Create a free one at
-      <b>openrouter.ai</b> — the sign-in button below handles it too. Keys are stored locally
-      with owner-only permissions and never leave this machine except to call the model
-      provider you chose.</p>
-      <div class="status" id="orStatus"></div>
-    </div>
-
-    <div id="directPane" class="hidden">
-      <div class="chips" id="directProviders" style="margin-bottom:14px"></div>
-      <div class="keyrow">
-        <input id="dBaseUrl" type="text" placeholder="Base URL, e.g. https://api.groq.com/openai/v1">
-        <input id="dModel" type="text" placeholder="Model id, e.g. llama-3.3-70b-versatile">
+      <div id="orModelSection" class="hidden">
+        <input class="search" id="modelSearch" type="text" placeholder="Filter models — try “mini”, “free”, “32b”…">
+        <div class="models" id="modelList"><div class="empty">Loading models…</div></div>
+        <div class="keyrow">
+          <input id="orKey" type="password" placeholder="Paste your OpenRouter key (sk-or-…)">
+          <button class="btn secondary" id="orOauth">Sign in with OpenRouter</button>
+          <button class="btn" id="orSave">Save key</button>
+        </div>
+        <div class="status" id="orStatus"></div>
       </div>
-      <div class="keyrow">
-        <input id="dKey" type="password" placeholder="API key (leave empty for local providers)">
-        <button class="btn" id="dSave">Save</button>
+      <div id="directModelSection" class="hidden">
+        <div class="keyrow">
+          <input id="dBaseUrl" type="text" placeholder="Base URL">
+          <input id="dModel" type="text" placeholder="Model id, e.g. gemma4:31b-cloud">
+        </div>
+        <div class="keyrow">
+          <input id="dKey" type="password" placeholder="API key (leave empty for local providers)">
+          <button class="btn" id="dSave">Save</button>
+        </div>
+        <div class="status" id="dStatus"></div>
       </div>
-      <div class="status" id="dStatus"></div>
+      <p class="note">Keys are stored locally with owner-only permissions and never leave this
+      machine except to call the provider you chose.</p>
     </div>
 
     <div class="footer">
@@ -334,6 +332,7 @@ const ICONS = {
   film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4"/>',
   code: '<path d="m8 8-5 4 5 4M16 8l5 4-5 4M13.5 5l-3 14"/>',
   pulse: '<path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3.4 1-4.5 2.5C10.9 4 9.3 3 7.5 3A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"/><path d="M8 12h2l1.5-3 2 6 1.5-3h3"/>',
+  server: '<rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/>',
   sparkles: '<path d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"/><path d="M19 3v4M21 5h-4"/>',
 };
 
@@ -412,18 +411,17 @@ function renderModels(filter) {
   const list = $('modelList');
   list.textContent = '';
   const q = (filter || '').toLowerCase();
-  const seen = new Set();
   let shown = 0;
   const groups = {};
   for (const m of state.models) {
+    if (state2.provider && m.provider !== state2.provider) continue;
     if (q && !(m.id + ' ' + m.name).toLowerCase().includes(q)) continue;
     (groups[m.provider] = groups[m.provider] || []).push(m);
   }
   const providers = Object.keys(groups).sort();
   for (const provider of providers) {
-    if (seen.has(provider)) continue;
-    seen.add(provider);
-    const head = document.createElement('div'); head.className = 'mgroup'; head.textContent = provider;
+    const head = document.createElement('div'); head.className = 'mgroup';
+    head.textContent = provider + ' - via OpenRouter';
     list.append(head);
     for (const m of groups[provider].sort((a, b) => (a.free === b.free) ? a.id.localeCompare(b.id) : (a.free ? -1 : 1))) {
       shown++;
@@ -450,33 +448,75 @@ function renderModels(filter) {
   }
 }
 
-const directProviders = [
-  {name: 'OpenAI', url: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: true},
-  {name: 'DeepSeek', url: 'https://api.deepseek.com', model: 'deepseek-chat', key: true},
-  {name: 'Groq', url: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', key: true},
-  {name: 'Mistral', url: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', key: true},
-  {name: 'Together', url: 'https://api.together.xyz/v1', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo', key: true},
-  {name: 'xAI', url: 'https://api.x.ai/v1', model: 'grok-3-mini', key: true},
-  {name: 'Ollama Cloud', url: 'https://ollama.com/v1', model: 'gemma4:31b-cloud', key: true},
-  {name: 'Ollama (local)', url: 'http://localhost:11434/v1', model: 'llama3.1', key: false},
-  {name: 'LM Studio (local)', url: 'http://localhost:1234/v1', model: '', key: false},
-  {name: 'Custom', url: '', model: '', key: true},
+const PROVIDER_NAMES = {
+  'openai': 'OpenAI', 'anthropic': 'Anthropic', 'google': 'Google', 'meta-llama': 'Meta Llama',
+  'mistralai': 'Mistral AI', 'deepseek': 'DeepSeek', 'qwen': 'Qwen', 'x-ai': 'xAI Grok',
+  'cohere': 'Cohere', 'amazon-nova': 'Amazon Nova', 'microsoft': 'Microsoft',
+  'moonshotai': 'Moonshot Kimi', 'minimax': 'MiniMax', 'z-ai': 'Z.ai GLM', 'nvidia': 'NVIDIA',
+  'perplexity': 'Perplexity', 'ai21': 'AI21', 'openrouter': 'OpenRouter',
+};
+const prettyProvider = p => PROVIDER_NAMES[p] || p;
+const DIRECT_PROVIDERS = [
+  {id: 'ollama-cloud', name: 'Ollama Cloud', url: 'https://ollama.com/v1', model: 'gemma4:31b-cloud', key: true, via: 'direct'},
+  {id: 'ollama-local', name: 'Ollama (local)', url: 'http://localhost:11434/v1', model: 'llama3.1', key: false, via: 'direct'},
+  {id: 'lmstudio', name: 'LM Studio (local)', url: 'http://localhost:1234/v1', model: '', key: false, via: 'direct'},
+  {id: 'openai-direct', name: 'OpenAI direct', url: 'https://api.openai.com/v1', model: 'gpt-4o-mini', key: true, via: 'direct'},
+  {id: 'groq', name: 'Groq', url: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', key: true, via: 'direct'},
+  {id: 'deepseek-direct', name: 'DeepSeek direct', url: 'https://api.deepseek.com', model: 'deepseek-chat', key: true, via: 'direct'},
+  {id: 'mistral-direct', name: 'Mistral direct', url: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', key: true, via: 'direct'},
+  {id: 'custom', name: 'Custom', url: '', model: '', key: true, via: 'direct'},
 ];
+const state2 = { provider: null };
 
-function renderDirectProviders() {
-  const host = $('directProviders');
-  host.textContent = '';
-  for (const p of directProviders) {
-    const chip = document.createElement('div');
-    chip.className = 'chip';
-    const name = document.createElement('span'); name.className = 'name'; name.textContent = p.name;
-    const btn = document.createElement('button'); btn.textContent = 'Use';
-    btn.addEventListener('click', () => {
-      $('dBaseUrl').value = p.url;
-      $('dModel').value = p.model;
-    });
-    chip.append(name, btn);
-    host.append(chip);
+function providerGroups() {
+  const counts = {};
+  for (const m of state.models) counts[m.provider] = (counts[m.provider] || 0) + 1;
+  return Object.keys(counts).sort((a, b) => counts[b] - counts[a]).map(p => ({
+    id: p, name: prettyProvider(p), count: counts[p], via: 'openrouter',
+  })).concat(DIRECT_PROVIDERS.map(d => ({id: d.id, name: d.name, count: 0, via: 'direct', direct: d})));
+}
+
+function renderProviders(filter) {
+  const grid = $('providerGrid');
+  grid.textContent = '';
+  const q = (filter || '').toLowerCase();
+  for (const p of providerGroups()) {
+    if (q && !p.name.toLowerCase().includes(q)) continue;
+    const card = document.createElement('div');
+    card.className = 'card' + (state2.provider === p.id ? ' selected' : '');
+    const icon = svgIcon(p.via === 'openrouter' ? 'globe' : 'server', 'cicon');
+    const t = document.createElement('div'); t.className = 't'; t.textContent = p.name;
+    const d = document.createElement('div'); d.className = 'd';
+    d.textContent = p.via === 'openrouter' ? p.count + ' models via OpenRouter' : 'Direct connection';
+    card.append(icon, t, d);
+    card.addEventListener('click', () => selectProvider(p));
+    grid.append(card);
+  }
+  if (!grid.children.length) {
+    const e = document.createElement('div'); e.className = 'empty'; e.style.gridColumn = '1/-1';
+    e.textContent = 'No providers match.';
+    grid.append(e);
+  }
+}
+
+function selectProvider(p) {
+  state2.provider = p.id;
+  $('providerPane').classList.add('hidden');
+  $('modelPane').classList.remove('hidden');
+  $('providerTitle').textContent = p.name;
+  if (p.via === 'openrouter') {
+    $('providerKind').textContent = 'via OpenRouter - one key, pick any model';
+    $('orModelSection').classList.remove('hidden');
+    $('directModelSection').classList.add('hidden');
+    if (state.model) bridge.saveAiConfig('openai-compat', 'https://openrouter.ai/api/v1', state.model.id);
+    renderModels('');
+    if (!state.models.length) bridge.fetchModels();
+  } else {
+    $('providerKind').textContent = 'direct connection';
+    $('orModelSection').classList.add('hidden');
+    $('directModelSection').classList.remove('hidden');
+    $('dBaseUrl').value = p.direct.url;
+    $('dModel').value = p.direct.model;
   }
 }
 
@@ -508,7 +548,11 @@ new QWebChannel(qt.webChannelTransport, channel => {
   // Signal handlers must be connected before any await so nothing is missed.
   bridge.modelsReady.connect(models => {
     state.models = models;
-    if (state.step === 3 && state.mode === 'openrouter') renderModels($('modelSearch').value);
+    if (state.step === 3) {
+      renderProviders($('providerSearch').value);
+      if (state2.provider && !$('orModelSection').classList.contains('hidden'))
+        renderModels($('modelSearch').value);
+    }
     $('orStatus').className = 'status ok';
     $('orStatus').textContent = models.length + ' models loaded.';
   });
@@ -546,7 +590,8 @@ new QWebChannel(qt.webChannelTransport, channel => {
   $('backTo1').addEventListener('click', () => setStep(1));
   $('toStep3').addEventListener('click', () => {
     setStep(3);
-    if (!state.models.length && state.mode === 'openrouter') bridge.fetchModels();
+    renderProviders($('providerSearch').value);
+    if (!state.models.length) bridge.fetchModels();
   });
   $('backTo2').addEventListener('click', () => { renderPlatforms(); setStep(2); });
   $('skipAi').addEventListener('click', () => { renderSummary(); setStep(4); });
@@ -556,20 +601,12 @@ new QWebChannel(qt.webChannelTransport, channel => {
     bridge.finish();
   });
 
-  $('modeOpenRouter').addEventListener('click', () => {
-    state.mode = 'openrouter';
-    $('modeOpenRouter').classList.add('selected');
-    $('modeDirect').classList.remove('selected');
-    $('openRouterPane').classList.remove('hidden');
-    $('directPane').classList.add('hidden');
-    if (!state.models.length) bridge.fetchModels();
-  });
-  $('modeDirect').addEventListener('click', () => {
-    state.mode = 'direct';
-    $('modeDirect').classList.add('selected');
-    $('modeOpenRouter').classList.remove('selected');
-    $('directPane').classList.remove('hidden');
-    $('openRouterPane').classList.add('hidden');
+  $('providerSearch').addEventListener('input', e => renderProviders(e.target.value));
+  $('backToProviders').addEventListener('click', () => {
+    state2.provider = null;
+    $('modelPane').classList.add('hidden');
+    $('providerPane').classList.remove('hidden');
+    renderProviders($('providerSearch').value);
   });
 
   $('modelSearch').addEventListener('input', e => renderModels(e.target.value));
