@@ -96,7 +96,7 @@ void tst_setup::bridgeSelectionRoundtrip()
     SetupBridge bridge(&settings, nullptr, this);
 
     QCOMPARE(bridge.getSelectedUseCases().size(), 0);
-    bridge.setSelectedUseCases(QJsonArray{"jobs", "social"});
+    bridge.setSelectedUseCases(QVariantList{"jobs", "social"});
     QCOMPARE(bridge.getSelectedUseCases().size(), 2);
     QCOMPARE(bridge.getSelectedUseCases().at(0).toString(), QString("jobs"));
 

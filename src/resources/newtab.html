@@ -106,14 +106,17 @@ function fill(id, items, make) {
 let bridge = null;
 new QWebChannel(qt.webChannelTransport, channel => {
   bridge = channel.objects.mochBridge;
-  document.body.classList.toggle('light', bridge.theme === 'light');
+  (async () => {
+  const theme = await bridge.theme;
+  document.body.classList.toggle('light', theme === 'light');
 
-  const topsites = bridge.getTopSites().items;
+  const topsites = (await bridge.getTopSites()).items || [];
   fill('topsites', topsites, tile);
-  fill('bookmarks', bridge.getBookmarks().items, tile);
+  const bookmarks = (await bridge.getBookmarks()).items || [];
+  fill('bookmarks', bookmarks, tile);
 
   const historyList = document.getElementById('history');
-  const recent = bridge.getRecentHistory().items;
+  const recent = (await bridge.getRecentHistory()).items || [];
   if (recent.length) {
     document.getElementById('history-section').hidden = false;
     recent.forEach(item => {
@@ -129,6 +132,7 @@ new QWebChannel(qt.webChannelTransport, channel => {
       historyList.append(li);
     });
   }
+  })();
 });
 
 document.getElementById('search').addEventListener('keydown', e => {

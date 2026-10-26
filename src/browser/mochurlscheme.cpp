@@ -29,6 +29,9 @@ void MochUrlScheme::requestStarted(QWebEngineUrlRequestJob *job)
         buffer->setData(url.host() == "setup" ? setupHtml() : newTabHtml());
         connect(buffer, &QIODevice::aboutToClose, buffer, &QObject::deleteLater);
         buffer->open(QIODevice::ReadOnly);
+        // Chromium caches scheme replies across launches otherwise, serving
+        // stale wizard/new-tab markup after an upgrade.
+        job->setAdditionalResponseHeaders(QMultiMap<QByteArray, QByteArray>{{"Cache-Control", "no-store"}});
         job->reply("text/html", buffer);
         return;
     }

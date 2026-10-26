@@ -21,10 +21,12 @@ public:
     explicit SetupBridge(Settings *settings, WebView *view, QObject *parent = nullptr);
 
     Q_INVOKABLE QString theme() const;
-    Q_INVOKABLE QJsonArray getUseCases() const;
-    Q_INVOKABLE QJsonArray getSelectedUseCases() const;
-    Q_INVOKABLE void setSelectedUseCases(const QJsonArray &ids);
-    Q_INVOKABLE QJsonObject getPlatformStates() const;
+    // QVariantList/Map cross the WebChannel as real JS arrays/objects;
+    // QJsonArray would arrive as a non-iterable handle.
+    Q_INVOKABLE QVariantList getUseCases() const;
+    Q_INVOKABLE QVariantList getSelectedUseCases() const;
+    Q_INVOKABLE void setSelectedUseCases(const QVariantList &ids);
+    Q_INVOKABLE QVariantMap getPlatformStates() const;
     Q_INVOKABLE void setPlatformSignedIn(const QString &platformId, bool signedIn);
     Q_INVOKABLE void requestSignIn(const QString &platformId);
 
@@ -39,7 +41,7 @@ public:
     static QJsonArray useCaseCatalog();
 
 signals:
-    void modelsReady(const QJsonArray &models);
+    void modelsReady(const QVariantList &models);
     void modelsFailed(const QString &reason);
     void oauthStarted(const QString &authUrl);
     void oauthResult(bool ok, const QString &message);

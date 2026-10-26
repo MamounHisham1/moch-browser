@@ -155,10 +155,12 @@ SetupBridge::SetupBridge(Settings *settings, WebView *view, QObject *parent)
     : QObject(parent), m_settings(settings), m_view(view),
       m_catalog(new ModelCatalog(this)), m_oauth(new OpenRouterAuth(this))
 {
-    connect(m_catalog, &ModelCatalog::modelsReady, this, &SetupBridge::modelsReady);
+    connect(m_catalog, &ModelCatalog::modelsReady, this, [this](const QJsonArray &models) {
+        emit modelsReady(models.toVariantList());
+    });
     connect(m_catalog, &ModelCatalog::modelsFailed, this, [this](const QString &reason) {
         emit modelsFailed(reason);
-        emit modelsReady(ModelCatalog::fallbackModels());
+        emit modelsReady(ModelCatalog::fallbackModels().toVariantList());
     });
     connect(m_oauth, &OpenRouterAuth::codeReceived, this, [this](const QString &code) {
         emit oauthResult(true, QStringLiteral("OpenRouter approved, exchanging key…"));
@@ -182,26 +184,28 @@ QString SetupBridge::theme() const
     return m_settings->theme();
 }
 
-QJsonArray SetupBridge::getUseCases() const
+QVariantList SetupBridge::getUseCases() const
 {
-    return useCaseCatalog();
+    return useCaseCatalog().toVariantList();
 }
 
-QJsonArray SetupBridge::getSelectedUseCases() const
+QVariantList SetupBridge::getSelectedUseCases() const
 {
-    return QJsonArray::fromVariantList(m_settings->get("use_cases").toList());
+    const QVariant stored = m_settings->get("use_cases");
+    return stored.isValid() ? stored.toList() : QVariantList();
 }
 
-void SetupBridge::setSelectedUseCases(const QJsonArray &ids)
+void SetupBridge::setSelectedUseCases(const QVariantList &ids)
 {
-    m_settings->set("use_cases", ids.toVariantList());
+    m_settings->set("use_cases", ids);
 }
 
-QJsonObject SetupBridge::getPlatformStates() const
+QVariantMap SetupBridge::getPlatformStates() const
 {
-    QJsonObject out;
-    const QVariantMap stored = m_settings->get("platforms").toMap();
-    for (auto it = stored.begin(); it != stored.end(); ++it) {
+    QVariantMap out;
+    const QVariant stored = m_settings->get("platforms");
+    const QVariantMap map = stored.isValid() ? stored.toMap() : QVariantMap();
+    for (auto it = map.begin(); it != map.end(); ++it) {
         const QVariantMap entry = it.value().toMap();
         out.insert(it.key(), entry.value("signed_in").toBool());
     }
