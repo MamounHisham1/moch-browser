@@ -287,10 +287,6 @@ void AiSidebar::onSubmit()
     if (explicitTask || TaskDetect::looksLikeTask(text)) {
         m_mode = Mode::Task;
         appendMessage(tr("You"), taskText);
-        if (!explicitTask)
-            appendHtml(QString("<div style=\"color:#8a8d94; font-size:11px; margin:2px 0 6px;\">"
-                               "Task detected — agent taking over. Prefix with /ask to force, "
-                               "or phrase as a question for plain chat.</div>"));
         m_agent->startTask(taskText, pageContext);
         m_stopButton->setVisible(true);
         m_sendButton->setVisible(false);
@@ -300,6 +296,10 @@ void AiSidebar::onSubmit()
 
     m_mode = Mode::Chat;
     appendMessage(tr("You"), text);
+    appendHtml(QStringLiteral(
+        "<div style=\"color:#8a8d94; font-size:11px; margin:2px 0 6px;\">"
+        "Answering from the page. Prefix with /ask to run it as an agent "
+        "task.</div>"));
 
     ChatRequest request;
     ChatMessage system;

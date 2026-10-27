@@ -41,7 +41,8 @@ agent's context.
 - New-tab page with top sites, bookmarks, recent history, and a search field
   (WebChannel bridge into the browser).
 - AI sidebar (`Ctrl+I`): chat about the current page, and autonomous
-  multi-step tasks (`/ask <task>`) with a live tool timeline, approval
+  multi-step tasks — action requests run the agent automatically (`/ask`
+  forces it) — with a live tool timeline, approval
   prompts, and an always-visible Stop button.
 - Agent runtime: 16 typed browser tools with JSON-Schema argument validation,
   per-tool timeouts, tool-call and wall-clock limits, cancellation, and
