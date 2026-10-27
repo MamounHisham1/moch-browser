@@ -1,11 +1,11 @@
 #include "tools/toolregistry.hpp"
 
-#include <QApplication>
-#include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QLineEdit>
 #include <QWebEnginePage>
+
+#include <memory>
+#include <utility>
 
 #include "browser/tabmanager.hpp"
 #include "browser/webview.hpp"
@@ -15,9 +15,14 @@
 // enters the model context — tools resolve names through
 // Security::SecretBox after user approval and inject values into the page
 // directly from C++. Every result payload carries lengths only, never
-// values. See security/secretbox.hpp.
+// values. request_secrets extends this with an in-chat credential form:
+// the sidebar collects the values and the tool stores the secret ones in
+// the vault. See security/secretbox.hpp.
 
 namespace {
+
+// Upper bound for one credential form; a login rarely needs more.
+constexpr int kMaxSecretFields = 6;
 
 QJsonObject toolParams(
     std::initializer_list<std::pair<const char *, const char *>> properties = {},
@@ -38,6 +43,131 @@ QString jsLiteral(const QString &text)
 {
     return QString::fromUtf8(QJsonDocument(QJsonArray{text}).toJson()) + QLatin1String("[0]");
 }
+
+// In-chat credential form (the Rakazo-style flow): the tool raises
+// secretBoxRequested and stays pending until the sidebar's card resolves —
+// the user's answer or a cancel. Secret fields are stored in the Secret
+// Box and reported by name and length only, never by value. Non-secret
+// fields (usernames, emails — values the agent must type into the page)
+// are returned BY DESIGN and deliberately NOT vaulted: they are not
+// secrets, the user typed them into a form addressed to the agent, and
+// storing them would scrub them from every future transcript forever
+// while serving no injection path (fill_input takes explicit values).
+class RequestSecretsTool final : public Tool
+{
+public:
+    explicit RequestSecretsTool(ToolRegistry *registry) : m_registry(registry) {}
+
+    ToolSpec spec() const override
+    {
+        QJsonObject fieldProps;
+        fieldProps.insert("name", QJsonObject{{"type", "string"}});
+        fieldProps.insert("label", QJsonObject{{"type", "string"}});
+        fieldProps.insert("secret", QJsonObject{{"type", "boolean"}});
+        const QJsonObject field{{"type", "object"},
+                                {"properties", fieldProps},
+                                {"required", QJsonArray{"name"}}};
+        QJsonObject properties;
+        properties.insert("fields", QJsonObject{{"type", "array"}, {"items", field}});
+        properties.insert("purpose", QJsonObject{{"type", "string"}});
+        return {"request_secrets",
+                "Show the user an in-chat credential form and wait for them to fill "
+                "it. fields is a list of {name, label, secret} entries (1..6, unique "
+                "non-empty names); secret=true fields are saved into the Secret Box "
+                "and reported by name only, never by value; secret=false values "
+                "(usernames, emails) are returned so they can be typed into the "
+                "page with fill_input.",
+                QJsonObject{{"type", "object"},
+                            {"properties", properties},
+                            {"required", QJsonArray{"fields", "purpose"}}}};
+    }
+
+    // Waiting for a human to type must not trip the per-tool timeout.
+    int timeoutMs() const override { return 600000; }
+
+    void execute(const QJsonObject &args, std::function<void(ToolResult)> done) override
+    {
+        const QJsonArray raw = args.value("fields").toArray();
+        if (raw.isEmpty() || raw.size() > kMaxSecretFields) {
+            done({false, "invalid_arguments",
+                  QStringLiteral("fields must hold 1..%1 entries")
+                      .arg(kMaxSecretFields),
+                  {}});
+            return;
+        }
+        QVariantList fields;
+        QStringList seen;
+        for (const QJsonValue &item : raw) {
+            const QJsonObject field = item.toObject();
+            const QString name = field.value("name").toString().trimmed();
+            if (name.isEmpty()) {
+                done({false, "invalid_arguments", "every field needs a name", {}});
+                return;
+            }
+            if (seen.contains(name)) {
+                done({false, "invalid_arguments",
+                      QStringLiteral("duplicate field name '%1'").arg(name), {}});
+                return;
+            }
+            seen.append(name);
+            fields.append(QVariantMap{{"name", name},
+                                      {"label", field.value("label").toString(name)},
+                                      {"secret", field.value("secret").toBool()}});
+        }
+        const QString purpose = args.value("purpose").toString().trimmed();
+
+        // The sidebar resolves exactly once; the flag absorbs stray calls.
+        auto settled = std::make_shared<bool>(false);
+        auto finish = [done, settled, fields, purpose](bool ok,
+                                                       const QVariantMap &values) {
+            if (*settled)
+                return;
+            *settled = true;
+            if (!ok) {
+                done({false, "user_declined", "user dismissed the credential form", {}});
+                return;
+            }
+            Security::SecretBox box;
+            QJsonArray entries;
+            for (const QVariant &item : fields) {
+                const QVariantMap field = item.toMap();
+                const QString name = field.value("name").toString();
+                if (!field.value("secret").toBool()) {
+                    // Returned by design; not vaulted (class comment).
+                    entries.append(QJsonObject{{"name", name},
+                                               {"value", values.value(name).toString()}});
+                    continue;
+                }
+                const QString value = values.value(name).toString();
+                if (!value.isEmpty())
+                    box.put(name, value);
+                if (!box.has(name)) {
+                    done({false, "empty_secret",
+                          QStringLiteral("no value provided for '%1'").arg(name), {}});
+                    return;
+                }
+                QJsonObject record{{"name", name},
+                                   {"saved", true},
+                                   {"length", box.value(name).length()}};
+                if (value.isEmpty())
+                    record.insert("reused", true); // kept the stored value
+                entries.append(record);
+            }
+            QJsonObject data{{"fields", entries}};
+            if (!purpose.isEmpty())
+                data.insert("purpose", purpose);
+            done({true, {}, {}, data});
+        };
+        if (!m_registry) {
+            done({false, "no_ui", "no sidebar is available to show the form", {}});
+            return;
+        }
+        m_registry->requestSecretBox(fields, purpose, std::move(finish));
+    }
+
+private:
+    ToolRegistry *m_registry = nullptr;
+};
 
 class ListSecretsTool final : public Tool
 {
@@ -79,7 +209,8 @@ public:
 
     Risk risk() const override { return Risk::Sensitive; }
 
-    // The modal prompt can wait arbitrarily long for the user to type.
+    // Page injection can wait on a slow renderer; no user input is collected
+    // here anymore (missing secrets point the model at request_secrets).
     int timeoutMs() const override { return 600000; }
 
     void execute(const QJsonObject &args, std::function<void(ToolResult)> done) override
@@ -105,37 +236,18 @@ public:
         }
 
         Security::SecretBox box;
-        QString value;
-        if (box.has(secretName)) {
-            value = box.value(secretName);
-        } else {
-            // Secret not stored yet: ask the user directly, then keep it
-            // in the vault so the redactor covers it from now on.
-            QString message = QStringLiteral("The secret '%1' is not stored in the "
-                                             "Secret Box yet.")
-                                  .arg(secretName);
-            if (!purpose.isEmpty())
-                message += QStringLiteral("\n\nPurpose: %1").arg(purpose);
-            message += tr("\n\nEnter the value to fill in. It will be saved in the "
-                          "Secret Box, never displayed again, and never sent to the "
-                          "AI model.");
-            bool ok = false;
-            QString provided =
-                QInputDialog::getText(QApplication::activeWindow(), tr("Secret Box"),
-                                      message, QLineEdit::Password, QString(), &ok);
-            if (!ok) {
-                done({false, "user_declined", "user did not provide the secret", {}});
-                return;
-            }
-            provided.remove(QLatin1Char('\r'));
-            provided.remove(QLatin1Char('\n'));
-            if (provided.isEmpty()) {
-                done({false, "user_declined", "empty value provided", {}});
-                return;
-            }
-            box.put(secretName, provided);
-            value = box.value(secretName);
+        if (!box.has(secretName)) {
+            // No modal popup here: send the model to the in-chat flow so the
+            // user gets a proper credential card in the sidebar and stays in
+            // control of the conversation.
+            done({false, "secret_missing",
+                  QStringLiteral("secret '%1' is not in the Secret Box — call "
+                                 "request_secrets so the user can provide it in chat")
+                      .arg(secretName),
+                  {}});
+            return;
         }
+        const QString value = box.value(secretName);
         if (value.isEmpty()) {
             done({false, "empty_secret", "the stored secret is empty", {}});
             return;
@@ -188,6 +300,7 @@ void registerSecretBoxTools(ToolRegistry *registry)
 {
     if (!registry)
         return;
+    registry->registerTool(new RequestSecretsTool(registry));
     registry->registerTool(new ListSecretsTool());
     registry->registerTool(new FillSecretTool(registry));
 }

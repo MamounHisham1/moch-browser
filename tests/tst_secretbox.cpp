@@ -29,7 +29,10 @@ private slots:
     void changedSignalFires();
     void redactionCoversStoredValues();
     void listSecretsNamesOnly();
+    void requestSecretsRoundtrip();
+    void requestSecretsValidation();
     void fillSecretWithoutTabFailsClean();
+    void fillSecretMissingPointsToChatForm();
     void fillSecretInjectionHasNoValueLeak();
     void classificationAndPolicy();
 
@@ -269,6 +272,152 @@ void tst_secretbox::listSecretsNamesOnly()
     QVERIFY2(!payload.contains(value), "list_secrets leaked a secret value");
 }
 
+// request_secrets end-to-end through a fake answerer: the sidebar side of
+// the secretBoxRequested signal. The tool must stay pending while the form
+// is open, save secret fields into the vault, report them saved-only (name
+// + length, no value), and return non-secret values by design.
+void tst_secretbox::requestSecretsRoundtrip()
+{
+    resetVault();
+    const QString secret = QStringLiteral("ROUNDTRIP-SECRET-9021");
+    const QString email = QStringLiteral("user@example.com");
+    ToolRegistry registry(nullptr);
+
+    std::function<void(bool, const QVariantMap &)> finish;
+    QVariantList announced;
+    QString announcedPurpose;
+    connect(&registry, &ToolRegistry::secretBoxRequested,
+            [&](const QVariantList &fields, const QString &purpose,
+                std::function<void(bool, const QVariantMap &)> f) {
+                announced = fields;
+                announcedPurpose = purpose;
+                finish = std::move(f);
+            });
+
+    ToolResult result;
+    bool settled = false;
+    const QJsonArray fields{
+        QJsonObject{{"name", QStringLiteral("gh-login")},
+                    {"label", QStringLiteral("Password")},
+                    {"secret", true}},
+        QJsonObject{{"name", QStringLiteral("gh-mail")},
+                    {"label", QStringLiteral("Email")},
+                    {"secret", false}}};
+    registry.execute("request_secrets",
+                     {{"fields", fields},
+                      {"purpose", QStringLiteral("sign in to github")}},
+                     [&result, &settled](ToolResult r) {
+                         result = r;
+                         settled = true;
+                     });
+    // The tool waits for the human: nothing settles until finish is called.
+    QVERIFY2(!settled, "request_secrets settled before the user answered");
+    QCOMPARE(announced.size(), 2);
+    QCOMPARE(announcedPurpose, QStringLiteral("sign in to github"));
+    QCOMPARE(announced.at(0).toMap().value(QStringLiteral("name")).toString(),
+             QStringLiteral("gh-login"));
+    QCOMPARE(announced.at(0).toMap().value(QStringLiteral("secret")).toBool(), true);
+
+    finish(true, {{QStringLiteral("gh-login"), secret},
+                  {QStringLiteral("gh-mail"), email}});
+    QVERIFY(settled);
+    QVERIFY2(result.ok, qPrintable(result.errorMessage));
+
+    const QJsonArray out = result.data.value("fields").toArray();
+    QCOMPARE(out.size(), 2);
+    // Secret field: saved-only record — name, saved flag, length, no value.
+    const QJsonObject secretRecord = out.at(0).toObject();
+    QCOMPARE(secretRecord.value("name").toString(), QStringLiteral("gh-login"));
+    QCOMPARE(secretRecord.value("saved").toBool(), true);
+    QCOMPARE(secretRecord.value("length").toInt(), secret.length());
+    // Non-secret field: the value is returned by design.
+    const QJsonObject plainRecord = out.at(1).toObject();
+    QCOMPARE(plainRecord.value("name").toString(), QStringLiteral("gh-mail"));
+    QCOMPARE(plainRecord.value("value").toString(), email);
+
+    const QString payload =
+        QString::fromUtf8(QJsonDocument(result.data).toJson(QJsonDocument::Compact));
+    QVERIFY2(!payload.contains(secret), "request_secrets leaked a secret value");
+
+    // The secret landed in the vault (so the redactor covers it and
+    // fill_secret can inject it); the plain email was deliberately not
+    // stored — it is returned to the agent instead.
+    const Security::SecretBox box;
+    QVERIFY(box.has(QStringLiteral("gh-login")));
+    QCOMPARE(box.value(QStringLiteral("gh-login")), secret);
+    QVERIFY(!box.has(QStringLiteral("gh-mail")));
+}
+
+// Argument validation and the cancel path. Validation failures settle
+// synchronously; a well-formed call with nobody answering stays pending;
+// a cancel resolves user_declined.
+void tst_secretbox::requestSecretsValidation()
+{
+    resetVault();
+    ToolRegistry registry(nullptr);
+
+    const auto expectInvalid = [&registry](const QJsonObject &args, const char *what) {
+        ToolResult result;
+        bool settled = false;
+        registry.execute("request_secrets", args,
+                         [&result, &settled](ToolResult r) {
+                             result = r;
+                             settled = true;
+                         });
+        QVERIFY2(settled, what); // rejections never wait for a user
+        QVERIFY2(!result.ok, what);
+        QCOMPARE(result.errorCode, QStringLiteral("invalid_arguments"));
+    };
+
+    expectInvalid({}, "missing required arguments");
+    expectInvalid({{"fields", QJsonArray{}}, {"purpose", "x"}}, "zero fields");
+    expectInvalid({{"fields", QJsonArray{QJsonObject{{"name", QStringLiteral("")}}}},
+                   {"purpose", "x"}},
+                  "empty field name");
+    expectInvalid({{"fields", QJsonArray{QJsonObject{{"name", QStringLiteral("a")}},
+                                         QJsonObject{{"name", QStringLiteral("a")}}}},
+                   {"purpose", "x"}},
+                  "duplicate field names");
+    QJsonArray tooMany;
+    for (int i = 0; i < 7; ++i)
+        tooMany.append(QJsonObject{{"name", QStringLiteral("f%1").arg(i)}});
+    expectInvalid({{"fields", tooMany}, {"purpose", "x"}}, "more than six fields");
+    expectInvalid({{"fields", QJsonArray{QJsonObject{{"name", QStringLiteral("a")}}}}},
+                  "missing purpose");
+
+    // A well-formed call with no answerer must still be waiting.
+    bool pendingSettled = false;
+    registry.execute("request_secrets",
+                     {{"fields", QJsonArray{QJsonObject{{"name", QStringLiteral("a")},
+                                                        {"secret", true}}}},
+                      {"purpose", QStringLiteral("x")}},
+                     [&pendingSettled](ToolResult) { pendingSettled = true; });
+    QElapsedTimer wait;
+    wait.start();
+    while (wait.elapsed() < 300)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    QVERIFY2(!pendingSettled, "request_secrets settled with nobody answering");
+
+    // Cancel path: ok=false collapses into user_declined, nothing stored.
+    connect(&registry, &ToolRegistry::secretBoxRequested,
+            [](const QVariantList &, const QString &,
+               std::function<void(bool, const QVariantMap &)> f) { f(false, {}); });
+    ToolResult declined;
+    bool declinedSettled = false;
+    registry.execute("request_secrets",
+                     {{"fields", QJsonArray{QJsonObject{{"name", QStringLiteral("b")},
+                                                        {"secret", true}}}},
+                      {"purpose", QStringLiteral("x")}},
+                     [&declined, &declinedSettled](ToolResult r) {
+                         declined = r;
+                         declinedSettled = true;
+                     });
+    QVERIFY(declinedSettled);
+    QVERIFY(!declined.ok);
+    QCOMPARE(declined.errorCode, QStringLiteral("user_declined"));
+    QVERIFY(!Security::SecretBox().has(QStringLiteral("b")));
+}
+
 void tst_secretbox::fillSecretWithoutTabFailsClean()
 {
     ToolRegistry registry(nullptr);
@@ -289,6 +438,40 @@ void tst_secretbox::fillSecretWithoutTabFailsClean()
     QVERIFY(settled);
     QVERIFY(!result.ok);
     QCOMPARE(result.errorCode, QStringLiteral("no_tab"));
+}
+
+// With a live tab but an unknown secret name, fill_secret must fail fast
+// with a pointer to the in-chat request_secrets flow — no modal may block
+// the run (a QInputDialog would hang this test forever under offscreen).
+void tst_secretbox::fillSecretMissingPointsToChatForm()
+{
+    resetVault();
+    Settings settings;
+    TabManager tabs(&settings, nullptr, nullptr, nullptr, this);
+    ToolRegistry registry(&tabs, this);
+    const int index = tabs.addTab(QUrl("data:text/html,<html><body>"
+                                       "<input id='pw' type='password'>"
+                                       "</body></html>"));
+    QVERIFY(waitForLoad(tabs.view(index)));
+
+    ToolResult result;
+    bool settled = false;
+    registry.execute("fill_secret",
+                     {{"selector", QStringLiteral("#pw")},
+                      {"secret_name", QStringLiteral("never-stored-name")},
+                      {"purpose", QStringLiteral("sign in")}},
+                     [&result, &settled](ToolResult r) {
+                         result = r;
+                         settled = true;
+                     });
+    QElapsedTimer wait;
+    wait.start();
+    while (!settled && wait.elapsed() < 5000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    QVERIFY2(settled, "missing-secret fill_secret did not settle (modal?)");
+    QVERIFY(!result.ok);
+    QCOMPARE(result.errorCode, QStringLiteral("secret_missing"));
+    QVERIFY(result.errorMessage.contains(QStringLiteral("request_secrets")));
 }
 
 void tst_secretbox::fillSecretInjectionHasNoValueLeak()
@@ -391,12 +574,30 @@ void tst_secretbox::classificationAndPolicy()
     QCOMPARE(Security::decide(Permission::Cautious, "list_secrets", list.risk, {}),
              Decision::Allow);
 
-    // Both tools are registered; fill_secret requires its three arguments.
+    // request_secrets is just a form: safe everywhere (even read-only), so
+    // showing the card never trips the approval gate. The sensitive step
+    // remains the later fill_secret of a stored secret.
+    const QJsonObject askArgs{
+        {"fields", QJsonArray{QJsonObject{{"name", QStringLiteral("pw")},
+                                          {"secret", true}}}},
+        {"purpose", QStringLiteral("sign in")}};
+    const Security::ClassifyDetail ask =
+        Security::classifyDetailed("request_secrets", askArgs);
+    QCOMPARE(ask.risk, Risk::Safe);
+    QCOMPARE(Security::decide(Permission::ReadOnly, "request_secrets", ask.risk, askArgs),
+             Decision::Allow);
+    QCOMPARE(Security::decide(Permission::Cautious, "request_secrets", ask.risk, askArgs),
+             Decision::Allow);
+    QCOMPARE(Security::decide(Permission::Autonomous, "request_secrets", ask.risk, askArgs),
+             Decision::Allow);
+
+    // All three tools are registered; fill_secret requires its three arguments.
     ToolRegistry registry(nullptr);
     QStringList names;
     for (const ToolSpec &spec : registry.specs())
         names << spec.name;
     QVERIFY(names.contains(QStringLiteral("list_secrets")));
+    QVERIFY(names.contains(QStringLiteral("request_secrets")));
     QVERIFY(names.contains(QStringLiteral("fill_secret")));
     ToolSpec fillSpec;
     for (const ToolSpec &spec : registry.specs()) {

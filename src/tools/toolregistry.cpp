@@ -24,6 +24,12 @@ ToolRegistry::ToolRegistry(TabManager *tabs, QObject *parent)
 #endif
 }
 
+void ToolRegistry::requestSecretBox(const QVariantList &fields, const QString &purpose,
+                                    SecretBoxAnswer finish)
+{
+    emit secretBoxRequested(fields, purpose, std::move(finish));
+}
+
 void ToolRegistry::registerTool(Tool *tool)
 {
     if (!tool || tool->spec().name.isEmpty())

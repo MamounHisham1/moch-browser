@@ -2,11 +2,15 @@
 
 #include <QTextCursor>
 #include <QTextEdit>
+#include <QVariant>
 #include <QWidget>
+
+#include <functional>
 
 #include "agent/agentservice.hpp"
 #include "ai/provider.hpp"
 #include "storage/sessionsstore.hpp"
+#include "tools/toolregistry.hpp"
 
 class QLabel;
 class QLineEdit;
@@ -50,6 +54,10 @@ private slots:
                              const QString &detail);
     void onHistoryAnchorClicked(const QUrl &url);
     void onStopClicked();
+    // request_secrets arrived: show the credential card now, or queue it
+    // while another card is open.
+    void onSecretBoxRequested(const QVariantList &fields, const QString &purpose,
+                              SecretBoxAnswer finish);
 
 private:
     void appendMessage(const QString &role, const QString &text);
@@ -74,6 +82,14 @@ private:
     // session replay): detach drops the live bubble, resume rebuilds it.
     void detachStreamingBubble();
     void resumeStreamingBubble();
+    // In-chat credential card (request_secrets): build/show the form, resolve
+    // it on Save/Cancel, and drop it when the owning task dies.
+    void showSecretCard(const QVariantList &fields, const QString &purpose,
+                        SecretBoxAnswer finish);
+    void onSecretCardSave();
+    void onSecretCardCancel();
+    void collapseSecretCard();
+    void cancelSecretCard();
 
     Settings *m_settings = nullptr;
     TabManager *m_tabs = nullptr;
@@ -117,4 +133,25 @@ private:
     RoutinesStore *m_routines = nullptr;
     QTimer *m_routineTimer = nullptr;
     int m_activeRoutineId = 0;
+
+    // In-chat credential card (request_secrets): the live form, the callback
+    // that resolves the pending tool, and a queue of requests that arrived
+    // while a card was already on screen.
+    struct PendingSecretRequest
+    {
+        QVariantList fields;
+        QString purpose;
+        SecretBoxAnswer finish;
+    };
+    QWidget *m_secretCard = nullptr;
+    QLabel *m_secretPurpose = nullptr;
+    QWidget *m_secretFormHost = nullptr;
+    QVBoxLayout *m_secretRows = nullptr;
+    QList<QWidget *> m_secretRowWidgets;
+    QList<QLineEdit *> m_secretEdits;
+    QVariantList m_secretFields;
+    QPushButton *m_secretSaveButton = nullptr;
+    QPushButton *m_secretCancelButton = nullptr;
+    SecretBoxAnswer m_secretFinish;
+    QList<PendingSecretRequest> m_secretQueue;
 };

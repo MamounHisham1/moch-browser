@@ -30,6 +30,7 @@
 #include "browser/tabmanager.hpp"
 #include "browser/webview.hpp"
 #include "security/contentsanitizer.hpp"
+#include "security/secretbox.hpp"
 #include "security/secretredactor.hpp"
 #include "storage/sessionsstore.hpp"
 #include "storage/settings.hpp"
@@ -255,6 +256,14 @@ QString routineStateName(AgentService::State state)
     }
     return QStringLiteral("unknown");
 }
+
+// Credential-card field label, falling back to the field name. QVariantMap
+// values are QVariants, whose toString() cannot take a fallback argument.
+QString secretFieldLabel(const QVariantMap &field)
+{
+    const QString label = field.value(QStringLiteral("label")).toString();
+    return label.isEmpty() ? field.value(QStringLiteral("name")).toString() : label;
+}
 } // namespace
 
 AiSidebar::AiSidebar(Settings *settings, TabManager *tabs, ToolRegistry *tools, QWidget *parent)
@@ -407,6 +416,48 @@ AiSidebar::AiSidebar(Settings *settings, TabManager *tabs, ToolRegistry *tools, 
     inputRow->addWidget(m_sendButton);
     inputRow->addWidget(m_stopButton);
 
+    // In-chat credential card (request_secrets): a bubble-like panel between
+    // the transcript and the input line, shown only while a form is pending.
+    m_secretCard = new QWidget(this);
+    m_secretCard->setObjectName(QStringLiteral("secretCard"));
+    m_secretCard->setAttribute(Qt::WA_StyledBackground, true);
+    m_secretCard->setStyleSheet(QStringLiteral(
+        "#secretCard { background-color:#2c3746; border:1px solid #3a4454;"
+        " border-radius:8px; }"
+        "#secretCard QLabel { color:#dbe4f0; font-size:12px;"
+        " background:transparent; }"
+        "#secretCard QLineEdit { background-color:#1f2127; color:#e4e6ea;"
+        " border:1px solid #3a4454; border-radius:4px; padding:4px 6px;"
+        " font-size:13px; }"
+        "#secretCard QLineEdit:focus { border-color:#5b8def; }"));
+    m_secretCard->setVisible(false);
+    auto *cardLayout = new QVBoxLayout(m_secretCard);
+    cardLayout->setContentsMargins(10, 8, 10, 8);
+    cardLayout->setSpacing(6);
+    m_secretPurpose = new QLabel(m_secretCard);
+    m_secretPurpose->setWordWrap(true);
+    m_secretFormHost = new QWidget(m_secretCard);
+    m_secretRows = new QVBoxLayout(m_secretFormHost);
+    m_secretRows->setContentsMargins(0, 0, 0, 0);
+    m_secretRows->setSpacing(4);
+    m_secretCancelButton = new QPushButton(tr("Cancel"), m_secretCard);
+    m_secretSaveButton = new QPushButton(tr("Save"), m_secretCard);
+    m_secretSaveButton->setObjectName(QStringLiteral("accentButton"));
+    auto *cardButtons = new QHBoxLayout();
+    cardButtons->addStretch(1);
+    cardButtons->addWidget(m_secretCancelButton);
+    cardButtons->addWidget(m_secretSaveButton);
+    cardLayout->addWidget(m_secretPurpose);
+    cardLayout->addWidget(m_secretFormHost);
+    cardLayout->addLayout(cardButtons);
+    connect(m_secretSaveButton, &QPushButton::clicked, this,
+            &AiSidebar::onSecretCardSave);
+    connect(m_secretCancelButton, &QPushButton::clicked, this,
+            &AiSidebar::onSecretCardCancel);
+    if (m_tools)
+        connect(m_tools, &ToolRegistry::secretBoxRequested, this,
+                &AiSidebar::onSecretBoxRequested);
+
     auto *approvalRow = new QHBoxLayout();
     approvalRow->addStretch(1);
     approvalRow->addWidget(m_denyButton);
@@ -418,6 +469,7 @@ AiSidebar::AiSidebar(Settings *settings, TabManager *tabs, ToolRegistry *tools, 
     layout->addLayout(header);
     layout->addWidget(m_status);
     layout->addWidget(m_viewStack, 1);
+    layout->addWidget(m_secretCard);
     layout->addLayout(approvalRow);
     layout->addLayout(inputRow);
 
@@ -809,6 +861,10 @@ void AiSidebar::onAgentFinished(AgentService::State state, const QString &summar
     m_sendButton->setVisible(true);
     m_approveButton->setVisible(false);
     m_denyButton->setVisible(false);
+    // The task owning a pending credential card is gone; resolve the tool
+    // with a cancel so nothing waits on a dead run (covers stop, cancel,
+    // timeout, and provider failure alike).
+    cancelSecretCard();
     appendMessage(tr("Agent"), summary);
     m_status->setText(stateLabel(state));
 }
@@ -834,6 +890,147 @@ void AiSidebar::onStopClicked()
     m_approveButton->setVisible(false);
     m_denyButton->setVisible(false);
     m_status->setText(tr("Stopped."));
+}
+
+// request_secrets while a card is already open: the new request queues and
+// is shown the moment the current one resolves, so the user only ever faces
+// one form and the agent never loses an answer to a race. (Chosen over
+// replace-and-cancel: cancelling would fail the earlier tool call the model
+// still expects an answer from.)
+void AiSidebar::onSecretBoxRequested(const QVariantList &fields, const QString &purpose,
+                                     SecretBoxAnswer finish)
+{
+    if (m_secretFinish) {
+        m_secretQueue.append({fields, purpose, std::move(finish)});
+        return;
+    }
+    showSecretCard(fields, purpose, std::move(finish));
+}
+
+// Render one credential request as the live card. The card never pre-fills
+// anything (write-only, like SecretBoxDialog); secret fields use Password
+// echo. The request itself is recorded in the transcript so it stays part
+// of the conversation history.
+void AiSidebar::showSecretCard(const QVariantList &fields, const QString &purpose,
+                               SecretBoxAnswer finish)
+{
+    m_secretFields = fields;
+    m_secretFinish = std::move(finish);
+    const QString text = purpose.isEmpty()
+                             ? tr("The agent needs credentials to continue.")
+                             : purpose;
+    m_secretPurpose->setText(text);
+    qDeleteAll(m_secretRowWidgets);
+    m_secretRowWidgets.clear();
+    m_secretEdits.clear();
+    const Security::SecretBox box;
+    for (const QVariant &entry : fields) {
+        const QVariantMap field = entry.toMap();
+        const QString name = field.value("name").toString();
+        const bool secret = field.value("secret").toBool();
+        auto *row = new QWidget(m_secretFormHost);
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        auto *label = new QLabel(secretFieldLabel(field), row);
+        auto *edit = new QLineEdit(row);
+        edit->setObjectName(QStringLiteral("secretField"));
+        edit->setEchoMode(secret ? QLineEdit::Password : QLineEdit::Normal);
+        if (secret && box.has(name))
+            edit->setPlaceholderText(tr("leave empty to keep the stored value"));
+        rowLayout->addWidget(label, 2);
+        rowLayout->addWidget(edit, 3);
+        m_secretRows->addWidget(row);
+        m_secretRowWidgets.append(row);
+        m_secretEdits.append(edit);
+    }
+    m_secretCard->setVisible(true);
+    appendMessage(tr("Secret Box"), text);
+    if (!m_secretEdits.isEmpty())
+        m_secretEdits.first()->setFocus();
+}
+
+// Save: hand everything to the tool (it decides what to store and what to
+// return), then confirm in the transcript with names only. Secret fields
+// may stay empty only when that secret already exists in the vault — the
+// tool then keeps the stored value.
+void AiSidebar::onSecretCardSave()
+{
+    if (!m_secretFinish)
+        return;
+    const Security::SecretBox box;
+    QVariantMap values;
+    QStringList missing;
+    for (int i = 0; i < m_secretFields.size(); ++i) {
+        const QVariantMap field = m_secretFields.at(i).toMap();
+        const QString name = field.value("name").toString();
+        const QString text = m_secretEdits.at(i)->text();
+        if (text.isEmpty()
+            && !(field.value("secret").toBool() && box.has(name))) {
+            missing.append(secretFieldLabel(field));
+            continue;
+        }
+        values.insert(name, text);
+    }
+    if (!missing.isEmpty()) {
+        m_secretPurpose->setText(
+            tr("Please fill: %1").arg(missing.join(QStringLiteral(", "))));
+        return;
+    }
+    QStringList secretNames;
+    for (const QVariant &entry : m_secretFields) {
+        const QVariantMap field = entry.toMap();
+        if (field.value("secret").toBool())
+            secretNames.append(field.value("name").toString());
+    }
+    auto finish = std::move(m_secretFinish);
+    m_secretFinish = nullptr;
+    finish(true, values);
+    appendMessage(tr("Secret Box"),
+                  secretNames.isEmpty()
+                      ? tr("Credentials received.")
+                      : tr("Saved to Secret Box: %1")
+                            .arg(secretNames.join(QStringLiteral(", "))));
+    collapseSecretCard();
+}
+
+// Cancel: resolve the pending tool as declined; the model sees
+// user_declined and can react (the step feed shows it too).
+void AiSidebar::onSecretCardCancel()
+{
+    if (!m_secretFinish)
+        return;
+    auto finish = std::move(m_secretFinish);
+    m_secretFinish = nullptr;
+    finish(false, {});
+    collapseSecretCard();
+}
+
+// Hide the card, drop its rows, and surface the next queued request if any.
+void AiSidebar::collapseSecretCard()
+{
+    m_secretCard->setVisible(false);
+    qDeleteAll(m_secretRowWidgets);
+    m_secretRowWidgets.clear();
+    m_secretEdits.clear();
+    m_secretFields.clear();
+    if (!m_secretQueue.isEmpty()) {
+        const PendingSecretRequest next = m_secretQueue.takeFirst();
+        showSecretCard(next.fields, next.purpose, std::move(next.finish));
+    }
+}
+
+// The task that asked for credentials died (finished, stopped, cancelled,
+// timed out, provider failed): resolve the pending tool with a cancel and
+// discard anything still queued from the same run.
+void AiSidebar::cancelSecretCard()
+{
+    m_secretQueue.clear();
+    if (!m_secretFinish)
+        return;
+    auto finish = std::move(m_secretFinish);
+    m_secretFinish = nullptr;
+    finish(false, {});
+    collapseSecretCard();
 }
 
 // Drop the live streaming caret bubble before the transcript document is
