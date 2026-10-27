@@ -11,8 +11,8 @@ tools — never with unrestricted access to your machine, cookies, or files.
 
 ## Status
 
-Working build (verified 2026-10-27, Arch Linux, Qt 6.11.2): 6 test suites,
-71 test cases, all passing via ctest; app selftest green; wizard and
+Working build (verified 2026-10-27, Arch Linux, Qt 6.11.2): 7 test suites,
+73 test cases, all passing via ctest; app selftest green; wizard and
 new-tab flows verified live via CDP against the real window. Phase tracking
 and the architectural record live in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Known limitations are listed at
@@ -77,7 +77,8 @@ tst_setup         7 passed   (model catalog parsing, use-case registry, bridge r
                               API key storage, OAuth callback server, wizard completion)
 tst_navtool       2 passed   (page tools against a live offscreen tab: find_elements matches,
                               navigation timeout survives timer fire)
-ctest: 100% tests passed (6 suites, 71 test cases)
+tst_taskdetect    2 passed   (sidebar router: action phrasings reach the agent, questions stay chat)
+ctest: 100% tests passed (7 suites, 73 test cases)
 ```
 
 ## Build

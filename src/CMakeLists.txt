@@ -33,6 +33,7 @@ qt_add_executable(moch
     security/permissionpolicy.cpp security/permissionpolicy.hpp
     agent/agentservice.cpp agent/agentservice.hpp
     agent/approvalgate.cpp agent/approvalgate.hpp
+    agent/taskdetect.cpp agent/taskdetect.hpp
     resources/moch.qrc
 )
 

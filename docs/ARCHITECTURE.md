@@ -214,7 +214,7 @@ generated qrc for plaintext proves nothing.
 
 ## Verification record (2026-10-27)
 
-Current HEAD was rebuilt and re-verified: 6 QtTest binaries, 71 cases, 100%
+Current HEAD was rebuilt and re-verified: 7 QtTest binaries, 73 cases, 100%
 pass offscreen. The first-run wizard was driven end to end over WebEngine
 CDP against the real window: 16 use-case cards render; selecting one
 persists; the job-hunting category shows its 6 platform chips; the live

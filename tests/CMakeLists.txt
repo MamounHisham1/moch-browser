@@ -156,3 +156,17 @@ set_tests_properties(tst_navtool PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
     TIMEOUT 90
 )
+
+qt_add_executable(tst_taskdetect
+    tst_taskdetect.cpp
+    ../src/agent/taskdetect.cpp ../src/agent/taskdetect.hpp
+)
+
+target_include_directories(tst_taskdetect PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+target_link_libraries(tst_taskdetect PRIVATE Qt6::Core Qt6::Test)
+
+add_test(NAME tst_taskdetect COMMAND tst_taskdetect)
+set_tests_properties(tst_taskdetect PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+)
