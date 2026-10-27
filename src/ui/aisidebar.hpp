@@ -6,10 +6,13 @@
 
 #include "agent/agentservice.hpp"
 #include "ai/provider.hpp"
+#include "storage/sessionsstore.hpp"
 
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QStackedWidget;
+class QTextBrowser;
 class QToolButton;
 class QVBoxLayout;
 class Settings;
@@ -41,6 +44,7 @@ private slots:
     void onAgentFinished(AgentService::State state, const QString &summary);
     void onApprovalRequested(const QString &toolName, const QString &reason,
                              const QString &detail);
+    void onHistoryAnchorClicked(const QUrl &url);
     void onStopClicked();
 
 private:
@@ -54,6 +58,16 @@ private:
     bool transcriptAtBottom() const;
     void scrollTranscriptToBottom();
     QString currentPageContext() const;
+    // Session history panel and read-only replay of a stored session.
+    void showHistoryPanel();
+    void showTranscriptPage();
+    void openSession(int id);
+    void renderHistoryList();
+    void renderSessionTranscript(const SessionsStore::Session &session);
+    // Streaming caret handling across transcript takeovers (history list or
+    // session replay): detach drops the live bubble, resume rebuilds it.
+    void detachStreamingBubble();
+    void resumeStreamingBubble();
 
     Settings *m_settings = nullptr;
     TabManager *m_tabs = nullptr;
@@ -72,6 +86,11 @@ private:
     QPushButton *m_denyButton = nullptr;
     QLabel *m_title = nullptr;
     QToolButton *m_closeButton = nullptr;
+    QToolButton *m_historyButton = nullptr;
+    QToolButton *m_backButton = nullptr;
+    QStackedWidget *m_viewStack = nullptr;
+    QTextBrowser *m_historyView = nullptr;
+    SessionsStore *m_sessions = nullptr;
     QString m_streamBuffer;
     QTextCursor m_streamCursor;
     bool m_streamPlaceholder = false;
@@ -82,4 +101,8 @@ private:
     // distinguishing our programmatic scrollbar moves from user scrolls.
     bool m_pinnedToBottom = true;
     bool m_programmaticScroll = false;
+    // Transcript takeover state: id of the replayed session (0 = live view)
+    // and whether the streaming caret was detached while browsing history.
+    int m_viewingSession = 0;
+    bool m_streamDetached = false;
 };

@@ -1,10 +1,12 @@
 #include "agent/agentservice.hpp"
 
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
 
 #include "ai/provider.hpp"
 #include "security/permissionpolicy.hpp"
+#include "storage/sessionsstore.hpp"
 #include "storage/settings.hpp"
 #include "tools/toolregistry.hpp"
 
@@ -85,6 +87,8 @@ void AgentService::startTask(const QString &goal, const QString &pageContext)
     m_toolCallCount = 0;
     m_pendingCalls = 0;
     m_cancelRequested = false;
+    m_startedAt = QDateTime::currentSecsSinceEpoch();
+    m_sessionSaved = false;
 
     QString systemPrompt = QString(kSystemPrompt);
     const QStringList useCases =
@@ -292,6 +296,18 @@ void AgentService::finish(State finalState, const QString &summary)
     m_wallClock->stop();
     setState(finalState);
     emit taskFinished(finalState, summary);
+    saveSession(finalState);
+}
+
+// Persist the finished task once: wall-clock timestamps plus the step
+// transcript, so the sidebar history can replay the session later.
+void AgentService::saveSession(State finalState)
+{
+    if (!m_sessions || m_sessionSaved || m_goal.isEmpty())
+        return;
+    m_sessionSaved = true;
+    m_sessions->append(m_goal, stateName(finalState), transcriptJson(),
+                       m_startedAt, QDateTime::currentSecsSinceEpoch());
 }
 
 QString AgentService::transcriptJson() const

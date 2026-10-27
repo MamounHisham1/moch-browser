@@ -65,6 +65,24 @@ ClassifyDetail classifyDetailed(const QString &toolName, const QJsonObject &args
             return sensitive(QStringLiteral("click_element %1").arg(hit));
     }
 
+    if (tool == QLatin1String("list_secrets"))
+        return {Risk::Safe, QStringLiteral("list_secrets returns names only, never values")};
+
+    // Secret injection is always sensitive; the reason carries the secret
+    // NAME and purpose only — never the value (values are not in args).
+    if (tool == QLatin1String("fill_secret")) {
+        QString name = argString(args, "secret_name").trimmed();
+        if (name.isEmpty())
+            name = QStringLiteral("(unnamed)");
+        QString reason = QStringLiteral("fill_secret injects the stored secret '%1' into "
+                                        "the page")
+                             .arg(name);
+        const QString purpose = argString(args, "purpose").trimmed();
+        if (!purpose.isEmpty())
+            reason += QStringLiteral(" (purpose: %1)").arg(purpose.left(120));
+        return sensitive(reason);
+    }
+
     if (tool == QLatin1String("fill_input")) {
         const QString hit = matchedArgWord(args, {"field", "selector"}, kFillFieldKeywords);
         if (!hit.isEmpty())

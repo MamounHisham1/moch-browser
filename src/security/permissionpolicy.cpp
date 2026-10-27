@@ -42,6 +42,18 @@ DecisionDetail decideDetailed(Permission permission, const QString &toolName, Ri
 {
     const QString tool = toolName.toLower();
 
+    // Filling a stored secret into a page always requires explicit user
+    // approval, at every permission level; read-only denies it outright
+    // (like other action tools).
+    if (tool == QLatin1String("fill_secret")) {
+        if (permission == Permission::ReadOnly)
+            return {Decision::Deny,
+                    QStringLiteral("read-only permission denies secret injection")};
+        return {Decision::NeedsApproval,
+                QStringLiteral("fill_secret injects a stored secret into a page and always "
+                               "requires explicit approval")};
+    }
+
     if (permission == Permission::ReadOnly) {
         if (kActionTools.contains(tool))
             return {Decision::Deny,

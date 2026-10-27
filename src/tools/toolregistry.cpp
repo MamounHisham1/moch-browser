@@ -13,6 +13,7 @@ ToolRegistry::ToolRegistry(TabManager *tabs, QObject *parent)
     : QObject(parent), m_tabs(tabs)
 {
     registerBuiltinTools(this);
+    registerSecretBoxTools(this);
 }
 
 void ToolRegistry::registerTool(Tool *tool)

@@ -27,3 +27,6 @@ private:
     TabManager *m_tabs = nullptr;
     QHash<QString, Tool *> m_tools;
 };
+
+// Registers the Secret Box tools (list_secrets, fill_secret).
+void registerSecretBoxTools(ToolRegistry *registry);

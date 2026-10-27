@@ -12,6 +12,7 @@
 
 class LlmProvider;
 class Settings;
+class SessionsStore;
 class ToolRegistry;
 
 class AgentService : public QObject
@@ -40,6 +41,10 @@ public:
     void cancel();
     QString transcriptJson() const;
 
+    // Optional persistence sink for finished tasks; when set, every finish()
+    // appends one session (goal, final state, transcript, timestamps).
+    void setSessionsStore(SessionsStore *store) { m_sessions = store; }
+
 signals:
     void stateChanged(AgentService::State state);
     void stepRecorded(const AgentService::StepRecord &step);
@@ -50,6 +55,7 @@ private:
     void setState(State state);
     void runLoop();
     void finish(State finalState, const QString &summary);
+    void saveSession(State finalState);
     void step(const QString &kind, const QString &label, const QString &detail, bool ok);
     ChatRequest buildRequest() const;
     void handleModelTurn(const ChatResponse &response);
@@ -60,6 +66,7 @@ private:
     LlmProvider *m_provider = nullptr;
     ToolRegistry *m_tools = nullptr;
     ApprovalGate *m_gate = nullptr;
+    SessionsStore *m_sessions = nullptr;
 
     State m_state = State::Idle;
     QString m_goal;
@@ -70,4 +77,8 @@ private:
     int m_toolCallCount = 0;
     int m_pendingCalls = 0;
     bool m_cancelRequested = false;
+    // Session persistence bookkeeping: wall-clock start of the task and a
+    // guard so a task that finishes twice (e.g. cancel + timeout) saves once.
+    qint64 m_startedAt = 0;
+    bool m_sessionSaved = false;
 };

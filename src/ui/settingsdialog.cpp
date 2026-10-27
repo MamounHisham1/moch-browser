@@ -5,11 +5,14 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
 #include "browser/urlresolver.hpp"
+#include "security/secretbox.hpp"
 #include "storage/settings.hpp"
+#include "ui/secretboxdialog.hpp"
 
 SettingsDialog::SettingsDialog(Settings *settings, QWidget *parent)
     : QDialog(parent), m_settings(settings)
@@ -44,6 +47,16 @@ SettingsDialog::SettingsDialog(Settings *settings, QWidget *parent)
     m_apiKey->setEchoMode(QLineEdit::Password);
     m_apiKey->setPlaceholderText(tr("Stored outside settings; empty keeps existing key"));
     form->addRow(tr("API key"), m_apiKey);
+
+    auto *secretBox = new Security::SecretBox(this);
+    auto *secretBoxButton = new QPushButton(tr("Secret Box…"));
+    secretBoxButton->setToolTip(tr("Manage the named secrets the agent can fill into "
+                                   "pages with your approval"));
+    connect(secretBoxButton, &QPushButton::clicked, this, [this, secretBox] {
+        SecretBoxDialog dialog(secretBox, this);
+        dialog.exec();
+    });
+    form->addRow(QString(), secretBoxButton);
 
     m_permission = new QComboBox();
     m_permission->addItem(tr("Read only — no page actions"), "readonly");
