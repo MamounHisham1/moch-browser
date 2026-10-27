@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QTimer>
+#include <QWebEngineFrame>
 #include <QWebEnginePage>
 
 #include "browser/tabmanager.hpp"
@@ -56,6 +57,53 @@ QString runJsSync(QWebEnginePage *page, const QString &source)
 QJsonObject toolError(const char *code, const QString &message)
 {
     return QJsonObject{{"error", code}, {"message", message}};
+}
+
+void collectFrames(const QWebEngineFrame &frame, QList<QWebEngineFrame> *out)
+{
+    out->append(frame);
+    for (const QWebEngineFrame &child : frame.children())
+        collectFrames(child, out);
+}
+
+void evaluateNextFrame(const std::shared_ptr<QList<QWebEngineFrame>> &frames, int index,
+                       const QString &script, const std::shared_ptr<QVariant> &mainResult,
+                       const std::function<void(const QString &, const QVariant &)> &run)
+{
+    if (index >= frames->size()) {
+        run(QStringLiteral("main"), *mainResult);
+        return;
+    }
+    QWebEngineFrame frame = frames->at(index);
+    const bool isMain = index == 0;
+    frame.runJavaScript(script, 0,
+                        [frames, index, script, mainResult, run, frame, isMain](
+                            const QVariant &result) mutable {
+                            if (isMain)
+                                *mainResult = result;
+                            const QJsonObject data = QJsonDocument::fromJson(
+                                result.toString().toUtf8()).object();
+                            if (data.value("found").toBool()) {
+                                run(frame.name().isEmpty() ? QStringLiteral("(unnamed)")
+                                                           : frame.name(),
+                                    result);
+                                return;
+                            }
+                            evaluateNextFrame(frames, index + 1, script, mainResult, run);
+                        });
+}
+
+// Contract: script returns JSON with "found": true|false in every frame.
+// Runs it main-frame-first, then children; run() fires with the first frame
+// whose result has found=true (frame name attached), or with the main-frame
+// result when nothing matched.
+void runInFirstMatchingFrame(QWebEnginePage *page, const QString &script,
+                             std::function<void(const QString &, const QVariant &)> run)
+{
+    auto frames = std::make_shared<QList<QWebEngineFrame>>();
+    collectFrames(page->mainFrame(), frames.get());
+    auto mainResult = std::make_shared<QVariant>();
+    evaluateNextFrame(frames, 0, script, mainResult, std::move(run));
 }
 
 class PageToolBase : public Tool
@@ -256,28 +304,36 @@ public:
             "(function(){"
             "let el=null;"
             "try { el = document.querySelector(%1); } catch(e) {"
-            "  return JSON.stringify({error:'bad_selector', message:String(e)}); }"
-            "if (!el) return JSON.stringify({error:'not_found', message:'no element matches'});"
+            "  return JSON.stringify({found:false, error:'bad_selector', message:String(e)}); }"
+            "if (!el) return JSON.stringify({found:false});"
             "el.scrollIntoView({block:'center'});"
             "el.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));"
             "el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));"
             "el.click();"
-            "return JSON.stringify({clicked:{tag:el.tagName.toLowerCase(),"
+            "return JSON.stringify({found:true, clicked:{tag:el.tagName.toLowerCase(),"
             "  text:(el.innerText||el.value||'').trim().slice(0,100)}});"
             "})()");
         const QString literal = QString(QJsonDocument(QJsonArray{selector}).toJson())
                                 + QLatin1String("[0]");
-        view->page()->runJavaScript(script.arg(literal), 0,
-                                    [done](const QVariant &result) {
-                                        const QJsonObject data = QJsonDocument::fromJson(
-                                            result.toString().toUtf8()).object();
-                                        if (data.contains("error")) {
-                                            done({false, data.value("error").toString(),
-                                                  data.value("message").toString(), {}});
-                                            return;
-                                        }
-                                        done({true, {}, {}, data});
-                                    });
+        runInFirstMatchingFrame(view->page(), script.arg(literal),
+                                [done](const QString &frame, const QVariant &result) {
+                                    const QJsonObject data = QJsonDocument::fromJson(
+                                        result.toString().toUtf8()).object();
+                                    if (!data.value("found").toBool()) {
+                                        const QString error = data.contains("error")
+                                            ? data.value("error").toString()
+                                            : QStringLiteral("not_found");
+                                        const QString message = data.contains("message")
+                                            ? data.value("message").toString()
+                                            : QStringLiteral("no element matches in any frame");
+                                        done({false, error, message, {}});
+                                        return;
+                                    }
+                                    QJsonObject out = data;
+                                    if (frame != QStringLiteral("main"))
+                                        out.insert("frame", frame);
+                                    done({true, {}, {}, out});
+                                });
     }
 };
 
@@ -309,32 +365,40 @@ public:
             "(function(){"
             "let el=null;"
             "try { el = document.querySelector(%1); } catch(e) {"
-            "  return JSON.stringify({error:'bad_selector', message:String(e)}); }"
-            "if (!el) return JSON.stringify({error:'not_found', message:'no element matches'});"
-            "if (el.disabled) return JSON.stringify({error:'disabled', message:'element is disabled'});"
-            "if (el.readOnly) return JSON.stringify({error:'readonly', message:'element is read-only'});"
+            "  return JSON.stringify({found:false, error:'bad_selector', message:String(e)}); }"
+            "if (!el) return JSON.stringify({found:false});"
+            "if (el.disabled) return JSON.stringify({found:false, error:'disabled', message:'element is disabled'});"
+            "if (el.readOnly) return JSON.stringify({found:false, error:'readonly', message:'element is read-only'});"
             "el.focus();"
             "el.value = %2;"
             "el.dispatchEvent(new Event('input',{bubbles:true}));"
             "el.dispatchEvent(new Event('change',{bubbles:true}));"
-            "return JSON.stringify({filled:{tag:el.tagName.toLowerCase(),"
+            "return JSON.stringify({found:true, filled:{tag:el.tagName.toLowerCase(),"
             "  length: String(el.value).length}});"
             "})()");
         const QString selectorLiteral = QString(QJsonDocument(QJsonArray{selector}).toJson())
                                         + QLatin1String("[0]");
         const QString valueLiteral = QString(QJsonDocument(QJsonArray{value}).toJson())
                                      + QLatin1String("[0]");
-        view->page()->runJavaScript(script.arg(selectorLiteral, valueLiteral), 0,
-                                    [done](const QVariant &result) {
-                                        const QJsonObject data = QJsonDocument::fromJson(
-                                            result.toString().toUtf8()).object();
-                                        if (data.contains("error")) {
-                                            done({false, data.value("error").toString(),
-                                                  data.value("message").toString(), {}});
-                                            return;
-                                        }
-                                        done({true, {}, {}, data});
-                                    });
+        runInFirstMatchingFrame(view->page(), script.arg(selectorLiteral, valueLiteral),
+                                [done](const QString &frame, const QVariant &result) {
+                                    const QJsonObject data = QJsonDocument::fromJson(
+                                        result.toString().toUtf8()).object();
+                                    if (!data.value("found").toBool()) {
+                                        const QString error = data.contains("error")
+                                            ? data.value("error").toString()
+                                            : QStringLiteral("not_found");
+                                        const QString message = data.contains("message")
+                                            ? data.value("message").toString()
+                                            : QStringLiteral("no element matches in any frame");
+                                        done({false, error, message, {}});
+                                        return;
+                                    }
+                                    QJsonObject out = data;
+                                    if (frame != QStringLiteral("main"))
+                                        out.insert("frame", frame);
+                                    done({true, {}, {}, out});
+                                });
     }
 };
 
@@ -365,33 +429,41 @@ public:
             "(function(){"
             "let el=null;"
             "try { el = document.querySelector(%1); } catch(e) {"
-            "  return JSON.stringify({error:'bad_selector', message:String(e)}); }"
+            "  return JSON.stringify({found:false, error:'bad_selector', message:String(e)}); }"
             "if (!el || el.tagName !== 'SELECT')"
-            "  return JSON.stringify({error:'not_found', message:'no <select> matches'});"
+            "  return JSON.stringify({found:false});"
             "const want=%2;"
             "let matched=false;"
             "for (const opt of el.options) {"
             "  if (opt.value===want || opt.text.trim()===want) { el.value=opt.value; matched=true; break; }"
             "}"
-            "if (!matched) return JSON.stringify({error:'no_option', message:'option not found'});"
+            "if (!matched) return JSON.stringify({found:false, error:'no_option', message:'option not found'});"
             "el.dispatchEvent(new Event('change',{bubbles:true}));"
-            "return JSON.stringify({selected: el.selectedOptions[0].text.trim()});"
+            "return JSON.stringify({found:true, selected: el.selectedOptions[0].text.trim()});"
             "})()");
         const QString selectorLiteral = QString(QJsonDocument(QJsonArray{selector}).toJson())
                                         + QLatin1String("[0]");
         const QString valueLiteral = QString(QJsonDocument(QJsonArray{value}).toJson())
                                      + QLatin1String("[0]");
-        view->page()->runJavaScript(script.arg(selectorLiteral, valueLiteral), 0,
-                                    [done](const QVariant &result) {
-                                        const QJsonObject data = QJsonDocument::fromJson(
-                                            result.toString().toUtf8()).object();
-                                        if (data.contains("error")) {
-                                            done({false, data.value("error").toString(),
-                                                  data.value("message").toString(), {}});
-                                            return;
-                                        }
-                                        done({true, {}, {}, data});
-                                    });
+        runInFirstMatchingFrame(view->page(), script.arg(selectorLiteral, valueLiteral),
+                                [done](const QString &frame, const QVariant &result) {
+                                    const QJsonObject data = QJsonDocument::fromJson(
+                                        result.toString().toUtf8()).object();
+                                    if (!data.value("found").toBool()) {
+                                        const QString error = data.contains("error")
+                                            ? data.value("error").toString()
+                                            : QStringLiteral("not_found");
+                                        const QString message = data.contains("message")
+                                            ? data.value("message").toString()
+                                            : QStringLiteral("no <select> matches in any frame");
+                                        done({false, error, message, {}});
+                                        return;
+                                    }
+                                    QJsonObject out = data;
+                                    if (frame != QStringLiteral("main"))
+                                        out.insert("frame", frame);
+                                    done({true, {}, {}, out});
+                                });
     }
 };
 
@@ -630,7 +702,7 @@ public:
         const QString script = QStringLiteral(
             "(function(){"
             "try { return JSON.stringify({found: !!document.querySelector(%1)}); }"
-            "catch(e) { return JSON.stringify({error:'bad_selector', message:String(e)}); }"
+            "catch(e) { return JSON.stringify({found:false, error:'bad_selector', message:String(e)}); }"
             "})()");
 
         auto *poller = new QObject(view);
@@ -638,29 +710,29 @@ public:
         const auto deadline = std::make_shared<QElapsedTimer>();
         deadline->start();
         QObject::connect(timer, &QTimer::timeout, poller, [poller, timer, deadline, view, script, literal, done] {
-            view->page()->runJavaScript(script.arg(literal), 0,
-                                        [poller, timer, deadline, done](const QVariant &result) {
-                                            const QJsonObject data = QJsonDocument::fromJson(
-                                                result.toString().toUtf8()).object();
-                                            const auto finish = [poller, timer, deadline, done](const ToolResult &r) {
-                                                timer->stop();
-                                                poller->deleteLater();
-                                                done(r);
-                                            };
-                                            if (data.contains("error")) {
-                                                finish({false, data.value("error").toString(),
-                                                        data.value("message").toString(), {}});
-                                                return;
-                                            }
-                                            if (data.value("found").toBool()) {
-                                                finish({true, {}, {}, QJsonObject{{"found", true}}});
-                                                return;
-                                            }
-                                            if (deadline->elapsed() > 10000) {
-                                                finish({false, "not_found",
-                                                        "element did not appear within 10s", {}});
-                                            }
-                                        });
+            runInFirstMatchingFrame(view->page(), script.arg(literal),
+                                    [poller, timer, deadline, done](const QString &, const QVariant &result) {
+                                        const QJsonObject data = QJsonDocument::fromJson(
+                                            result.toString().toUtf8()).object();
+                                        const auto finish = [poller, timer, deadline, done](const ToolResult &r) {
+                                            timer->stop();
+                                            poller->deleteLater();
+                                            done(r);
+                                        };
+                                        if (data.contains("error")) {
+                                            finish({false, data.value("error").toString(),
+                                                    data.value("message").toString(), {}});
+                                            return;
+                                        }
+                                        if (data.value("found").toBool()) {
+                                            finish({true, {}, {}, QJsonObject{{"found", true}}});
+                                            return;
+                                        }
+                                        if (deadline->elapsed() > 10000) {
+                                            finish({false, "not_found",
+                                                    "element did not appear within 10s in any frame", {}});
+                                        }
+                                    });
         });
         timer->start(250);
     }
