@@ -11,8 +11,8 @@ tools — never with unrestricted access to your machine, cookies, or files.
 
 ## Status
 
-Working build (verified 2026-10-26, Arch Linux, Qt 6.11.2): 5 test suites,
-74 test functions, all passing via ctest; app selftest green; wizard and
+Working build (verified 2026-10-27, Arch Linux, Qt 6.11.2): 6 test suites,
+71 test cases, all passing via ctest; app selftest green; wizard and
 new-tab flows verified live via CDP against the real window. Phase tracking
 and the architectural record live in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Known limitations are listed at
@@ -68,14 +68,16 @@ projections.
 ## Test results (executed 2026-10-25)
 
 ```
-tst_provider     10 passed   (OpenAI wire format, error mapping, SSE streaming, key handling)
+tst_provider      8 passed   (OpenAI wire format, error mapping, SSE streaming, key handling)
 tst_security     38 passed   (sanitizer envelope, risk classifier, secret redactor, permission matrix)
-tst_browsercore  10 passed   (URL resolution, settings roundtrip, history, bookmarks, tab lifecycle)
-tst_agent         8 passed   (tool validation, dispatch errors, full agent loop with mock model,
+tst_browsercore   9 passed   (URL resolution, settings roundtrip, history, bookmarks, tab lifecycle)
+tst_agent         7 passed   (tool validation, dispatch errors, full agent loop with mock model,
                               approval gate, readonly deny, malformed-model recovery)
-tst_setup         8 passed   (model catalog parsing, use-case registry, bridge roundtrip,
-                              API key storage, OAuth callback server)
-ctest: 100% tests passed (5 suites, 74 test functions)
+tst_setup         7 passed   (model catalog parsing, use-case registry, bridge roundtrip,
+                              API key storage, OAuth callback server, wizard completion)
+tst_navtool       2 passed   (page tools against a live offscreen tab: find_elements matches,
+                              navigation timeout survives timer fire)
+ctest: 100% tests passed (6 suites, 71 test cases)
 ```
 
 ## Build

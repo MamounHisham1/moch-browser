@@ -206,10 +206,24 @@ false; the agent system prompt includes the chosen use cases.
 WebChannel contract that cost a debugging session: invokables WITH return
 values arrive in JS as Promises (must be awaited); signal payloads arrive
 as plain values; register signal handlers before any await. Both pages
-follow it; keep it that way. AUTORCC does not always notice .html-only
-edits — `touch src/resources/moch.qrc` before rebuilding, and verify with
-the on-page build tag rather than grepping the binary (resources are
-zstd-compressed).
+follow it; keep it that way. AUTORCC can keep serving stale HTML after
+.html-only edits; touching the qrc is not reliable. Delete the generated
+`qrc_moch.cpp` and its object (or rebuild clean), then verify by extracting
+and decompressing the embedded resource (zstd) — grepping the binary or the
+generated qrc for plaintext proves nothing.
+
+## Verification record (2026-10-27)
+
+Current HEAD was rebuilt and re-verified: 6 QtTest binaries, 71 cases, 100%
+pass offscreen. The first-run wizard was driven end to end over WebEngine
+CDP against the real window: 16 use-case cards render; selecting one
+persists; the job-hunting category shows its 6 platform chips; the live
+OpenRouter catalog loads (462 models across 75 providers in this run);
+selecting OpenAI shows 103 models and a model click persists
+`ai.base_url`/`ai.model`; the summary resolves its asynchronous AI row;
+`Enter Moch` sets `setup_complete` and navigates to `moch://newtab`. The
+new-tab page populates its top-sites and history sections after a reload
+(bookmarks were empty in this profile).
 
 ## Implementation record (2026-10-25)
 
