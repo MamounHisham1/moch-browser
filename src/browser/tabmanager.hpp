@@ -23,6 +23,13 @@ struct TabInfo
     int loadProgress = 0;
 };
 
+// One persisted tab of a saved session (url + title, in tab order).
+struct SessionTab
+{
+    QUrl url;
+    QString title;
+};
+
 class TabManager : public QObject
 {
     Q_OBJECT
@@ -47,6 +54,21 @@ public:
     bool canGoBack() const;
     bool canGoForward() const;
 
+    // Tab session persistence: open tabs are saved (url, title, order,
+    // active tab) to a crash-safe JSON file under the app data dir,
+    // debounced on open/close/navigate and flushed on destruction.
+    static QString sessionFilePath();
+    // Reads the last saved session; empty list when missing or unreadable.
+    static QList<SessionTab> loadSavedSession(int *activeIndex = nullptr);
+    // Writes the current tab list immediately (skipped when tracking is off
+    // or the tab widget is gone).
+    void saveSessionNow();
+    // Restores the session saved on disk; no-op when nothing to restore.
+    void restoreSavedSession();
+    // Only the session-owning (first) window enables tracking so extra
+    // windows never overwrite the saved file.
+    void setSessionTrackingEnabled(bool enabled);
+
 signals:
     void tabsChanged();
     void currentChanged(int index);
@@ -61,6 +83,7 @@ signals:
 
 private:
     void reindex();
+    void scheduleSessionSave();
 
     Settings *m_settings = nullptr;
     QWebEngineProfile *m_profile = nullptr;
@@ -70,4 +93,6 @@ private:
     QList<WebView *> m_views;
     QList<QUrl> m_closedUrls;
     int m_current = -1;
+    QTimer *m_saveTimer = nullptr;
+    bool m_trackSession = false;
 };

@@ -6,6 +6,7 @@ class BookmarkStore;
 class DownloadManager;
 class HistoryStore;
 class MainWindow;
+class QWebEngineProfile;
 class Settings;
 class TabManager;
 
@@ -25,6 +26,7 @@ private:
     HistoryStore *m_history = nullptr;
     BookmarkStore *m_bookmarks = nullptr;
     DownloadManager *m_downloads = nullptr;
+    QWebEngineProfile *m_profile = nullptr;
     TabManager *m_tabs = nullptr;
     MainWindow *m_window = nullptr;
 };

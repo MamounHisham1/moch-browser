@@ -3,6 +3,9 @@
 #include <QFile>
 #include <QJsonDocument>
 
+#include "browser/bookmarkstore.hpp"
+#include "browser/browserimport.hpp"
+#include "browser/historystore.hpp"
 #include "browser/webview.hpp"
 #include "storage/settings.hpp"
 
@@ -232,6 +235,67 @@ void SetupBridge::requestSignIn(const QString &platformId)
         }
     }
 }
+
+void SetupBridge::setStores(HistoryStore *history, BookmarkStore *bookmarks)
+{
+    m_history = history;
+    m_bookmarks = bookmarks;
+}
+
+// Reading other browsers needs Qt Sql; targets that build this file
+// without Qt6::Sql get stubs that keep the import section unavailable.
+#ifdef QT_SQL_LIB
+QVariantList SetupBridge::getImportBrowsers() const
+{
+    QVariantList out;
+    if (!m_history || !m_bookmarks)
+        return out;
+    for (const BrowserSource &source : BrowserImport::availableBrowsers()) {
+        QVariantMap entry;
+        entry.insert("id", source.id);
+        entry.insert("name", source.name);
+        entry.insert("bookmarks", source.bookmarks);
+        entry.insert("history", source.history);
+        entry.insert("error", source.error);
+        out.append(entry);
+    }
+    return out;
+}
+
+QVariantMap SetupBridge::importBrowser(const QString &browserId)
+{
+    QVariantMap out;
+    if (!m_history || !m_bookmarks) {
+        out.insert("ok", false);
+        out.insert("error", QStringLiteral("stores unavailable"));
+        return out;
+    }
+    ImportSummary summary;
+    const bool ok = BrowserImport::importFrom(browserId, m_bookmarks, m_history,
+                                              &summary);
+    out.insert("ok", ok);
+    out.insert("bookmarks", summary.bookmarks);
+    out.insert("history", summary.history);
+    out.insert("duplicates", summary.duplicates);
+    out.insert("warnings", summary.warnings);
+    if (!ok && summary.warnings.isEmpty())
+        out.insert("error", QStringLiteral("nothing could be read"));
+    else if (!ok)
+        out.insert("error", summary.warnings.join(QStringLiteral("; ")));
+    return out;
+}
+#else
+QVariantList SetupBridge::getImportBrowsers() const
+{
+    return {};
+}
+
+QVariantMap SetupBridge::importBrowser(const QString &browserId)
+{
+    Q_UNUSED(browserId);
+    return QVariantMap{{"ok", false}, {"error", QStringLiteral("unavailable")}};
+}
+#endif
 
 void SetupBridge::fetchModels()
 {

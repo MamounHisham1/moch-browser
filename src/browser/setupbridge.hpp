@@ -8,6 +8,8 @@
 #include "ai/modelcatalog.hpp"
 #include "browser/openrouterauth.hpp"
 
+class BookmarkStore;
+class HistoryStore;
 class Settings;
 class WebView;
 
@@ -20,6 +22,10 @@ class SetupBridge : public QObject
 public:
     explicit SetupBridge(Settings *settings, WebView *view, QObject *parent = nullptr);
 
+    // Stores used by the browser-import section; optional (the wizard
+    // works without them, the import section then stays unavailable).
+    void setStores(HistoryStore *history, BookmarkStore *bookmarks);
+
     Q_INVOKABLE QString theme() const;
     // QVariantList/Map cross the WebChannel as real JS arrays/objects;
     // QJsonArray would arrive as a non-iterable handle.
@@ -29,6 +35,12 @@ public:
     Q_INVOKABLE QVariantMap getPlatformStates() const;
     Q_INVOKABLE void setPlatformSignedIn(const QString &platformId, bool signedIn);
     Q_INVOKABLE void requestSignIn(const QString &platformId);
+
+    // Import section: detectable other browsers with entry counts, and a
+    // one-shot import returning {ok, bookmarks, history, duplicates,
+    // warnings, error}.
+    Q_INVOKABLE QVariantList getImportBrowsers() const;
+    Q_INVOKABLE QVariantMap importBrowser(const QString &browserId);
 
     Q_INVOKABLE void fetchModels();
     Q_INVOKABLE void saveAiConfig(const QString &mode, const QString &baseUrl,
@@ -52,4 +64,6 @@ private:
     QPointer<WebView> m_view;
     ModelCatalog *m_catalog = nullptr;
     OpenRouterAuth *m_oauth = nullptr;
+    HistoryStore *m_history = nullptr;
+    BookmarkStore *m_bookmarks = nullptr;
 };

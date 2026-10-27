@@ -1,6 +1,13 @@
 #include "browser/tabmanager.hpp"
 
+#include <QDir>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSaveFile>
 #include <QStackedWidget>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QWebChannel>
 #include <QWebEngineHistory>
@@ -15,6 +22,21 @@
 #include "browser/webview.hpp"
 #include "storage/settings.hpp"
 
+namespace {
+// Debounce window for session writes; restarts on every tab change.
+constexpr int kSessionSaveDelayMs = 1200;
+
+// True for urls that must never come back from a saved session (the
+// first-run wizard) or that carry no state (blank views).
+bool restorableUrl(const QUrl &url)
+{
+    if (url.isEmpty())
+        return false;
+    return !(url.scheme() == QLatin1String("moch")
+             && url.host() == QLatin1String("setup"));
+}
+} // namespace
+
 TabManager::TabManager(Settings *settings, QWebEngineProfile *profile, HistoryStore *history,
                        BookmarkStore *bookmarks, QObject *parent)
     : QObject(parent), m_settings(settings), m_profile(profile), m_history(history),
@@ -26,10 +48,21 @@ TabManager::TabManager(Settings *settings, QWebEngineProfile *profile, HistorySt
         m_closedUrls.clear();
         m_current = -1;
     });
+
+    m_saveTimer = new QTimer(this);
+    m_saveTimer->setSingleShot(true);
+    m_saveTimer->setInterval(kSessionSaveDelayMs);
+    connect(m_saveTimer, &QTimer::timeout, this, &TabManager::saveSessionNow);
+    connect(this, &TabManager::tabsChanged, this, &TabManager::scheduleSessionSave);
+    connect(this, &TabManager::tabUrlChanged, this, &TabManager::scheduleSessionSave);
 }
 
 TabManager::~TabManager()
 {
+    // Flush a pending debounced save so quitting right after a change does
+    // not lose the last tab state.
+    if (m_saveTimer && m_saveTimer->isActive())
+        saveSessionNow();
     if (m_stack && !m_stack->parent())
         delete m_stack;
 }
@@ -119,6 +152,7 @@ int TabManager::addTab(const QUrl &url, bool background)
         });
         channel->registerObject("mochBridge", bridge);
         auto *setup = new SetupBridge(m_settings, view, channel);
+        setup->setStores(m_history, m_bookmarks);
         connect(setup, &SetupBridge::finished, view, [view] {
             view->load(QUrl("moch://newtab"));
         });
@@ -202,4 +236,110 @@ void TabManager::reindex()
         m_views.at(i)->setTabIndex(i);
     if (m_current >= m_views.size())
         m_current = m_views.size() - 1;
+}
+
+QString TabManager::sessionFilePath()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+           + QStringLiteral("/tabsession.json");
+}
+
+QList<SessionTab> TabManager::loadSavedSession(int *activeIndex)
+{
+    if (activeIndex)
+        *activeIndex = 0;
+    QFile file(sessionFilePath());
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    const QJsonArray tabs = root.value("tabs").toArray();
+    QList<SessionTab> out;
+    for (const QJsonValue &value : tabs) {
+        const QJsonObject entry = value.toObject();
+        const QUrl url(entry.value("url").toString());
+        if (!restorableUrl(url))
+            continue;
+        SessionTab tab;
+        tab.url = url;
+        tab.title = entry.value("title").toString();
+        out.append(tab);
+    }
+    if (activeIndex)
+        *activeIndex = qMax(0, root.value("active").toInt());
+    return out;
+}
+
+void TabManager::saveSessionNow()
+{
+    if (m_saveTimer)
+        m_saveTimer->stop();
+    if (!m_trackSession || !m_stack)
+        return;
+
+    QJsonArray tabs;
+    const QUrl activeUrl = currentView() ? currentView()->url() : QUrl();
+    int active = 0;
+    for (int i = 0; i < m_views.size(); ++i) {
+        QUrl url = m_views.at(i)->url();
+        if (!restorableUrl(url))
+            continue;
+        if (url.isEmpty())
+            url = QUrl("moch://newtab");
+        QJsonObject entry;
+        entry.insert("url", url.toString());
+        entry.insert("title", m_views.at(i)->title());
+        tabs.append(entry);
+    }
+    // The active tab's saved position: first entry matching its url, else 0.
+    if (!activeUrl.isEmpty()) {
+        for (int i = 0; i < tabs.size(); ++i) {
+            if (QUrl(tabs.at(i).toObject().value("url").toString()) == activeUrl) {
+                active = i;
+                break;
+            }
+        }
+    }
+
+    QJsonObject root;
+    root.insert("active", active);
+    root.insert("tabs", tabs);
+
+    const QString path = sessionFilePath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        qWarning("moch: cannot write tab session %s", qPrintable(path));
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    // QSaveFile writes to a temp file and renames on commit, so a crash
+    // mid-write never corrupts the previous session.
+    if (!file.commit())
+        qWarning("moch: cannot commit tab session %s", qPrintable(path));
+}
+
+void TabManager::restoreSavedSession()
+{
+    if (!m_stack || !m_trackSession)
+        return;
+    int active = 0;
+    const QList<SessionTab> saved = loadSavedSession(&active);
+    if (saved.isEmpty())
+        return;
+    for (const SessionTab &tab : saved)
+        addTab(tab.url, true);
+    if (m_views.isEmpty())
+        return;
+    setCurrentIndex(qBound(0, active, m_views.size() - 1));
+}
+
+void TabManager::setSessionTrackingEnabled(bool enabled)
+{
+    m_trackSession = enabled;
+}
+
+void TabManager::scheduleSessionSave()
+{
+    if (m_trackSession && m_stack)
+        m_saveTimer->start();
 }

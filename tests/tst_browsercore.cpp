@@ -1,11 +1,18 @@
+#include <QElapsedTimer>
 #include <QJsonDocument>
+#include <QNetworkCookie>
 #include <QSignalSpy>
 #include <QSqlDatabase>
+#include <QSqlError>
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <QWebEngineCookieStore>
+#include <QWebEnginePage>
+#include <QWebEngineProfile>
 
 #include "browser/bookmarkstore.hpp"
+#include "browser/browserimport.hpp"
 #include "browser/historystore.hpp"
 #include "browser/tabmanager.hpp"
 #include "browser/urlresolver.hpp"
@@ -17,6 +24,7 @@ class tst_browsercore : public QObject
 {
     Q_OBJECT
 private slots:
+    void initTestCase();
     void urlDetection();
     void urlSearchFallback();
     void agentTargetResolution();
@@ -26,11 +34,22 @@ private slots:
     void historyTopSitesDedup();
     void bookmarksCrud();
     void tabLifecycle();
+    void namedProfilePersistsCookies();
+    void sessionSaveRestoreRoundtrip();
+    void importFromFixtureProfiles();
 
 private:
     QTemporaryDir m_home;
     bool waitForLoad(WebView *view, int timeoutMs = 10000);
 };
+
+void tst_browsercore::initTestCase()
+{
+    // Redirect all user data away from the real profile before anything in
+    // this process touches QStandardPaths or WebEngine.
+    qputenv("XDG_CONFIG_HOME", (m_home.path() + "/config").toUtf8());
+    qputenv("XDG_DATA_HOME", (m_home.path() + "/data").toUtf8());
+}
 
 bool tst_browsercore::waitForLoad(WebView *view, int timeoutMs)
 {
@@ -204,6 +223,288 @@ void tst_browsercore::tabLifecycle()
 
     tabs.reopenClosedTab();
     QCOMPARE(tabs.count(), 1);
+}
+
+void tst_browsercore::namedProfilePersistsCookies()
+{
+    // A constructed named profile must persist cookies to disk across
+    // "restarts" — the same setup ApplicationController now uses at
+    // startup (QWebEngineProfile::defaultProfile() is off-the-record with
+    // the Qt in use here and cannot persist anything). Storage stays in a
+    // temp dir; the real profile is never touched.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString storage = dir.path() + "/webengine";
+    QNetworkCookie cookie(QByteArray("moch_probe"), QByteArray("persist1"));
+    cookie.setDomain(QStringLiteral("example.com"));
+    cookie.setPath(QStringLiteral("/"));
+    cookie.setExpirationDate(QDateTime::currentDateTimeUtc().addDays(1));
+    {
+        QWebEngineProfile profile(QStringLiteral("tst_moch"));
+        QVERIFY(!profile.isOffTheRecord());
+        QCOMPARE(profile.persistentCookiesPolicy(),
+                 QWebEngineProfile::AllowPersistentCookies);
+        profile.setPersistentStoragePath(storage);
+        // Chromium's network service (and with it the cookie backend)
+        // starts lazily on the first navigation, so load a page first.
+        QWebEnginePage page(&profile);
+        page.load(QUrl("data:text/html,<h1>hi</h1>"));
+        QTRY_VERIFY(!page.isLoading());
+        QWebEngineCookieStore *store = profile.cookieStore();
+        // cookieAdded fires on Chromium's IO thread; queue into the main
+        // thread via a context object (QSignalSpy drops unregistered
+        // cross-thread payload types).
+        QList<QNetworkCookie> added;
+        QObject::connect(store, &QWebEngineCookieStore::cookieAdded, store,
+                         [&added](const QNetworkCookie &c) { added.append(c); });
+        store->loadAllCookies();
+        store->setCookie(cookie, QUrl("https://example.com/"));
+        QTRY_VERIFY(added.size() == 1);
+    } // profile destructor flushes the cookie database
+
+    // "Restart" evidence: the cookie must be in the profile's Cookies
+    // database on disk, so any later profile instance restores it.
+    const QString cookiesDb = storage + "/Cookies";
+    QTemporaryDir copyDir;
+    QVERIFY(copyDir.isValid());
+    const QString copyPath = copyDir.filePath("Cookies");
+    bool flushed = false;
+    QElapsedTimer drain;
+    drain.start();
+    while (!flushed && drain.elapsed() < 10000) {
+        QTest::qWait(500);
+        if (QFileInfo::exists(cookiesDb) && QFile::copy(cookiesDb, copyPath))
+            flushed = true;
+    }
+    QVERIFY2(flushed, "cookie database must be flushed to disk");
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "moch-cookies");
+        db.setDatabaseName(copyPath);
+        QVERIFY(db.open());
+        QSqlQuery query(db);
+        query.prepare("SELECT COUNT(*) FROM cookies WHERE name = ?");
+        query.addBindValue(QStringLiteral("moch_probe"));
+        QVERIFY(query.exec());
+        QVERIFY(query.next());
+        QCOMPARE(query.value(0).toInt(), 1);
+        query.finish();
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("moch-cookies");
+}
+
+void tst_browsercore::sessionSaveRestoreRoundtrip()
+{
+    Settings settings;
+
+    // Tracking off → nothing is written, even on explicit save.
+    QFile::remove(TabManager::sessionFilePath());
+    {
+        TabManager tabs(&settings, nullptr);
+        tabs.addTab(QUrl("data:text/html,<title>Untracked</title>"));
+        tabs.saveSessionNow();
+    }
+    QVERIFY(!QFile::exists(TabManager::sessionFilePath()));
+
+    // Tracked session: two tabs, first one active.
+    int active = -1;
+    {
+        TabManager tabs(&settings, nullptr);
+        tabs.setSessionTrackingEnabled(true);
+        const int first = tabs.addTab(QUrl("data:text/html,<title>One</title><h1>1</h1>"));
+        tabs.addTab(QUrl("data:text/html,<title>Two</title><h1>2</h1>"));
+        tabs.setCurrentIndex(first);
+        QVERIFY(waitForLoad(tabs.view(0)));
+        QVERIFY(waitForLoad(tabs.view(1)));
+        QCOMPARE(tabs.view(0)->title(), QString("One"));
+        tabs.saveSessionNow();
+
+        const QList<SessionTab> saved = TabManager::loadSavedSession(&active);
+        QCOMPARE(saved.size(), 2);
+        QCOMPARE(active, first);
+        QVERIFY(saved.at(0).url.toString().startsWith("data:"));
+        QVERIFY(saved.at(1).url.toString().startsWith("data:"));
+        QCOMPARE(saved.at(0).title, QString("One"));
+    }
+
+    // A fresh manager restores order and the active tab.
+    {
+        TabManager reopened(&settings, nullptr);
+        QCOMPARE(reopened.count(), 0);
+        reopened.setSessionTrackingEnabled(true);
+        reopened.restoreSavedSession();
+        QCOMPARE(reopened.count(), 2);
+        QCOMPARE(reopened.currentIndex(), active);
+        QCOMPARE(TabManager::loadSavedSession().size(), 2);
+    }
+
+    // Corrupt or truncated file degrades to "nothing to restore".
+    QFile file(TabManager::sessionFilePath());
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("{not json");
+    file.close();
+    QVERIFY(TabManager::loadSavedSession().isEmpty());
+    QVERIFY(TabManager::loadSavedSession(&active).isEmpty());
+    QCOMPARE(active, 0);
+
+    QFile::remove(TabManager::sessionFilePath());
+}
+
+namespace {
+BrowserSource detectId(const QList<BrowserSource> &sources, const QString &id)
+{
+    for (const BrowserSource &source : sources)
+        if (source.id == id)
+            return source;
+    return {};
+}
+} // namespace
+
+void tst_browsercore::importFromFixtureProfiles()
+{
+    QTemporaryDir home;
+    QVERIFY(home.isValid());
+    const QString homePath = home.path();
+
+    // --- Chromium fixture: Bookmarks JSON + History sqlite -------------
+    const QString chromeDefault = homePath + "/.config/google-chrome/Default";
+    QVERIFY(QDir().mkpath(chromeDefault));
+    {
+        QFile file(chromeDefault + "/Bookmarks");
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(R"JSON({
+            "roots": {
+                "bookmark_bar": {"type": "folder", "name": "Bar", "children": [
+                    {"type": "url", "name": "Chrome BM",
+                     "url": "https://chrome.example.com/",
+                     "date_added": "13390000000000000"},
+                    {"type": "folder", "name": "Folder", "children": [
+                        {"type": "url", "name": "Nested",
+                         "url": "https://nested.example.com/",
+                         "date_added": "13390000000000001"}]}
+                ]},
+                "other": {"type": "folder", "name": "Other", "children": [
+                    {"type": "url", "name": "Dup",
+                     "url": "https://dup.example.com/",
+                     "date_added": "13390000000000002"}
+                ]}
+            }
+        })JSON");
+        file.close();
+    }
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "fixture-chrome");
+        db.setDatabaseName(chromeDefault + "/History");
+        QVERIFY(db.open());
+        QSqlQuery query(db);
+        QVERIFY(query.exec("CREATE TABLE urls (id INTEGER PRIMARY KEY,"
+                           " url TEXT, title TEXT, last_visit_time INTEGER)"));
+        QVERIFY(query.exec(
+            "INSERT INTO urls (url, title, last_visit_time) VALUES"
+            " ('https://chrome.example.com/', 'Chrome', 13400000000000000)"));
+        QVERIFY(query.exec(
+            "INSERT INTO urls (url, title, last_visit_time) VALUES"
+            " ('https://historyonly.example.com/', 'HO', 13400000000000001)"));
+        query.finish();
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("fixture-chrome");
+
+    // --- Firefox fixture: profiles.ini + places.sqlite -----------------
+    const QString ffBase = homePath + "/.mozilla/firefox";
+    const QString ffProfile = ffBase + "/abc123.default";
+    QVERIFY(QDir().mkpath(ffProfile));
+    {
+        QFile ini(ffBase + "/profiles.ini");
+        QVERIFY(ini.open(QIODevice::WriteOnly));
+        ini.write("[Profile0]\nName=default\nIsRelative=1\n"
+                  "Path=abc123.default\nDefault=1\n");
+        ini.close();
+    }
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "fixture-ff");
+        db.setDatabaseName(ffProfile + "/places.sqlite");
+        QVERIFY(db.open());
+        QSqlQuery query(db);
+        QVERIFY(query.exec("CREATE TABLE moz_places (id INTEGER PRIMARY KEY,"
+                           " url TEXT, title TEXT, last_visit_date INTEGER)"));
+        QVERIFY(query.exec("CREATE TABLE moz_bookmarks (id INTEGER PRIMARY KEY,"
+                           " type INTEGER, fk INTEGER, title TEXT,"
+                           " dateAdded INTEGER)"));
+        QVERIFY(query.exec(
+            "INSERT INTO moz_places (url, title, last_visit_date) VALUES"
+            " ('https://ff.example.com/', 'FF', 1700000000000000)"));
+        QVERIFY(query.exec(
+            "INSERT INTO moz_places (url, title, last_visit_date) VALUES"
+            " ('https://ff2.example.com/', 'FF2', 1700000000000001)"));
+        QVERIFY(query.exec(
+            "INSERT INTO moz_bookmarks (type, fk, title, dateAdded) VALUES"
+            " (1, 1, 'FF bookmark', 1700000000000000)"));
+        QVERIFY(query.exec(
+            "INSERT INTO moz_bookmarks (type, fk, title, dateAdded) VALUES"
+            " (1, 2, 'FF bookmark 2', 1700000000000001)"));
+        QVERIFY(query.exec(
+            "INSERT INTO moz_bookmarks (type, fk, title, dateAdded) VALUES"
+            " (2, NULL, 'Folder', 1700000000000002)"));
+        query.finish();
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("fixture-ff");
+
+    // --- Detection with entry counts -----------------------------------
+    const QList<BrowserSource> found = BrowserImport::availableBrowsers(homePath);
+    QCOMPARE(found.size(), 2);
+    QCOMPARE(detectId(found, "chrome").bookmarks, 3);
+    QCOMPARE(detectId(found, "chrome").history, 2);
+    QCOMPARE(detectId(found, "firefox").bookmarks, 2);
+    QCOMPARE(detectId(found, "firefox").history, 2);
+    const QStringList ids = BrowserImport::detectableBrowsers(homePath);
+    QVERIFY(ids.contains("chrome"));
+    QVERIFY(ids.contains("firefox"));
+
+    // --- Merge with duplicate skipping ----------------------------------
+    HistoryStore history;
+    BookmarkStore bookmarks;
+    history.clearAll();
+    bookmarks.clearAll();
+    history.recordVisit("https://chrome.example.com/", "Existing history");
+    bookmarks.add("https://dup.example.com/", "Existing bookmark");
+
+    ImportSummary summary;
+    QVERIFY(BrowserImport::importFrom("chrome", &bookmarks, &history, &summary,
+                                      homePath));
+    QCOMPARE(summary.bookmarks, 2);  // dup.example.com already present
+    QCOMPARE(summary.history, 1);    // chrome.example.com already present
+    QCOMPARE(summary.duplicates, 2);
+    QVERIFY(summary.warnings.isEmpty());
+    QCOMPARE(bookmarks.forUrl("https://nested.example.com/").title,
+             QString("Nested"));
+    QCOMPARE(history.search("historyonly").size(), 1);
+
+    // Importing again skips everything as duplicates.
+    QVERIFY(BrowserImport::importFrom("chrome", &bookmarks, &history, &summary,
+                                      homePath));
+    QCOMPARE(summary.bookmarks, 0);
+    QCOMPARE(summary.history, 0);
+    QCOMPARE(summary.duplicates, 5);
+
+    QVERIFY(BrowserImport::importFrom("firefox", &bookmarks, &history, &summary,
+                                      homePath));
+    QCOMPARE(summary.bookmarks, 2);
+    QCOMPARE(summary.history, 2);
+    QVERIFY(summary.warnings.isEmpty());
+    QCOMPARE(bookmarks.forUrl("https://ff2.example.com/").title,
+             QString("FF bookmark 2"));
+
+    // Unknown browsers fail with a warning; stores are untouched.
+    const int bookmarksBefore = bookmarks.all().size();
+    QVERIFY(!BrowserImport::importFrom("netscape", &bookmarks, &history,
+                                       &summary, homePath));
+    QVERIFY(!summary.warnings.isEmpty());
+    QCOMPARE(bookmarks.all().size(), bookmarksBefore);
+
+    history.clearAll();
+    bookmarks.clearAll();
 }
 
 QTEST_MAIN(tst_browsercore)

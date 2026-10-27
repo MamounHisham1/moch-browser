@@ -207,6 +207,14 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; }
       also just browse to it later.</p>
     </div>
     <div id="platformSections"></div>
+    <div id="importSection" class="hidden">
+      <div class="uc-head" style="margin-top:30px">
+        <span class="t">Import from another browser</span>
+        <span class="d">Bookmarks and history, one click. Existing entries are never touched.</span>
+      </div>
+      <div class="chips" id="importChips"></div>
+      <div class="status" id="importStatus"></div>
+    </div>
     <div class="footer">
       <button class="btn ghost" id="backTo1">Back</button>
       <div class="nav"><button class="btn" id="toStep3">Continue</button></div>
@@ -542,6 +550,56 @@ async function renderSummary() {
   addRow('Privacy', 'Passwords and cookies stay in Moch, never sent to the model');
 }
 
+async function renderImport() {
+  try {
+    const browsers = await bridge.getImportBrowsers();
+    if (!Array.isArray(browsers) || !browsers.length) return;
+    $('importSection').classList.remove('hidden');
+    const host = $('importChips');
+    host.textContent = '';
+    for (const b of browsers) {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = b.name;
+      const counts = document.createElement('span');
+      counts.className = 'd';
+      counts.style.fontSize = '11.5px';
+      counts.textContent = b.error
+        ? b.error
+        : b.bookmarks + ' bookmarks · ' + b.history + ' history';
+      const btn = document.createElement('button');
+      btn.textContent = 'Import';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        const st = $('importStatus');
+        st.className = 'status';
+        st.textContent = 'Importing from ' + b.name + '…';
+        const res = await bridge.importBrowser(b.id);
+        if (res.ok) {
+          st.className = 'status ok';
+          st.textContent = b.name + ': imported ' + res.bookmarks
+            + ' bookmarks and ' + res.history + ' history entries'
+            + (res.duplicates ? ' (' + res.duplicates + ' duplicates skipped)' : '');
+          const warnings = res.warnings || [];
+          if (warnings.length)
+            st.textContent += ' — ' + warnings.join('; ');
+          counts.textContent = 'imported';
+          btn.textContent = 'Done';
+        } else {
+          st.className = 'status err';
+          st.textContent = 'Import from ' + b.name + ' failed: '
+            + (res.error || 'unknown error');
+          btn.disabled = false;
+        }
+      });
+      chip.append(name, counts, btn);
+      host.append(chip);
+    }
+  } catch (e) { /* import is optional; never block the wizard */ }
+}
+
 new QWebChannel(qt.webChannelTransport, channel => {
   bridge = channel.objects.mochSetup;
   // Invokable return values arrive as Promises; signal payloads as values.
@@ -578,6 +636,7 @@ new QWebChannel(qt.webChannelTransport, channel => {
   const plats = await bridge.getPlatformStates();
   state.signed = new Set(Object.keys(plats || {}).filter(k => plats[k]));
   renderUses();
+  renderImport();
   } catch (err) {
   initOverlay.classList.remove('hidden');
   initOverlay.textContent = 'Init failed: ' + err.message;
