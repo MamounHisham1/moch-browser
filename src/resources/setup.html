@@ -224,9 +224,10 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; }
   <section id="step3" class="hidden">
     <div class="head">
       <h1>Choose your AI provider</h1>
-      <p class="sub">Every major provider is here. OpenRouter-backed ones share a single key;
-      Ollama, LM Studio and others connect directly — including local models. Pick one, then
-      pick the model.</p>
+      <p class="sub">Every major provider is here. Native providers — Z.ai, OpenAI, DeepSeek,
+      Groq, Mistral and more — are called directly with your own provider key, coding plans
+      included; the rest are served via OpenRouter, and Ollama or LM Studio run locally.
+      Pick one, then pick the model.</p>
     </div>
     <div id="providerPane">
       <input class="search" id="providerSearch" type="text" placeholder="Search providers — OpenAI, Anthropic, Google, Ollama…">
@@ -243,11 +244,26 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; }
       <div id="orModelSection" class="hidden">
         <input class="search" id="modelSearch" type="text" placeholder="Filter models — try “mini”, “free”, “32b”…">
         <div class="models" id="modelList"><div class="empty">Loading models…</div></div>
-        <div class="keyrow">
+        <div class="keyrow" id="orKeyRow">
           <input id="orKey" type="password" placeholder="Paste your OpenRouter key (sk-or-…)">
           <button class="btn secondary" id="orOauth">Sign in with OpenRouter</button>
           <button class="btn" id="orSave">Save key</button>
         </div>
+        <div class="keyrow hidden" id="nativeKeyRow">
+          <input id="nativeKey" type="password" placeholder="Paste your provider API key">
+          <button class="btn" id="nativeSave">Save key</button>
+        </div>
+        <label class="note hidden" id="codingRow" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="codingPlan" checked>
+          <span id="codingLabel">GLM Coding Plan — works with your Z.ai subscription</span>
+        </label>
+        <p class="note hidden" id="nativeDocsRow">
+          <a href="#" id="nativeDocs">Open the provider console</a>
+        </p>
+        <p class="note hidden" id="openrouterEscape">
+          Prefer one key for everything? <a href="#" id="viaOpenRouter">Route via OpenRouter instead</a>.
+        </p>
+        <p class="note" id="viaNote"></p>
         <div class="status" id="orStatus"></div>
       </div>
       <div id="directModelSection" class="hidden">
@@ -255,9 +271,12 @@ h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.5px; }
           <input id="dBaseUrl" type="text" placeholder="Base URL">
           <input id="dModel" type="text" placeholder="Model id, e.g. gemma4:31b-cloud">
         </div>
-        <div class="keyrow">
+        <div class="keyrow" id="dKeyRow">
           <input id="dKey" type="password" placeholder="API key (leave empty for local providers)">
           <button class="btn" id="dSave">Save</button>
+        </div>
+        <div class="keyrow hidden" id="dSaveRow">
+          <button class="btn" id="dSaveNoKey">Save</button>
         </div>
         <div class="status" id="dStatus"></div>
       </div>
@@ -308,6 +327,8 @@ const state = {
   model: null,
   mode: 'openrouter',
   direct: null,
+  native: null,
+  slugMap: {},
 };
 
 const $ = id => document.getElementById(id);
@@ -415,6 +436,20 @@ function renderPlatforms() {
   }
 }
 
+const NATIVE_NAMES = {
+  'zai': 'Z.ai', 'openai': 'OpenAI', 'deepseek': 'DeepSeek', 'groq': 'Groq',
+  'mistral': 'Mistral AI', 'together': 'Together AI', 'xai': 'xAI',
+  'ollama': 'Ollama', 'lmstudio': 'LM Studio',
+};
+const nativeIdFor = slug => state.slugMap[slug] || '';
+
+async function loadSlugMap() {
+  try {
+    const parsed = JSON.parse(await bridge.getSlugMap());
+    state.slugMap = (parsed && parsed.slugs) || {};
+  } catch (e) { state.slugMap = {}; }
+}
+
 function renderModels(filter) {
   const list = $('modelList');
   list.textContent = '';
@@ -429,7 +464,10 @@ function renderModels(filter) {
   const providers = Object.keys(groups).sort();
   for (const provider of providers) {
     const head = document.createElement('div'); head.className = 'mgroup';
-    head.textContent = provider + ' - via OpenRouter';
+    const nativeId = nativeIdFor(provider);
+    head.textContent = nativeId
+      ? provider + ' — direct, your ' + (NATIVE_NAMES[nativeId] || nativeId) + ' key'
+      : provider + ' — served via OpenRouter';
     list.append(head);
     for (const m of groups[provider].sort((a, b) => (a.free === b.free) ? a.id.localeCompare(b.id) : (a.free ? -1 : 1))) {
       shown++;
@@ -441,9 +479,12 @@ function renderModels(filter) {
       row.append(id);
       if (m.free) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = 'FREE'; row.append(b); }
       row.append(ctx);
-      row.addEventListener('click', () => {
+      row.addEventListener('click', async () => {
         state.model = m;
-        bridge.saveAiConfig('openai-compat', 'https://openrouter.ai/api/v1', m.id);
+        state.native = null;
+        try { state.native = JSON.parse(await bridge.resolveModelProvider(m.id)); }
+        catch (e) { state.native = null; }
+        applyModelConfig();
         renderModels($('modelSearch').value);
       });
       list.append(row);
@@ -492,10 +533,17 @@ function renderProviders(filter) {
     if (q && !p.name.toLowerCase().includes(q)) continue;
     const card = document.createElement('div');
     card.className = 'card' + (state2.provider === p.id ? ' selected' : '');
-    const icon = svgIcon(p.via === 'openrouter' ? 'globe' : 'server', 'cicon');
+    const nativeId = nativeIdFor(p.id);
+    const icon = svgIcon(p.via === 'openrouter' ? (nativeId ? 'sparkles' : 'globe') : 'server', 'cicon');
     const t = document.createElement('div'); t.className = 't'; t.textContent = p.name;
     const d = document.createElement('div'); d.className = 'd';
-    d.textContent = p.via === 'openrouter' ? p.count + ' models via OpenRouter' : 'Direct connection';
+    if (p.via === 'openrouter') {
+      d.textContent = nativeId
+        ? p.count + ' models — direct with your ' + (NATIVE_NAMES[nativeId] || nativeId) + ' key'
+        : p.count + ' models via OpenRouter';
+    } else {
+      d.textContent = 'Direct connection';
+    }
     card.append(icon, t, d);
     card.addEventListener('click', () => selectProvider(p));
     grid.append(card);
@@ -507,16 +555,67 @@ function renderProviders(filter) {
   }
 }
 
+// Persists the chosen model and switches the key step between the native
+// provider flow (own key, coding-plan toggle) and the OpenRouter flow.
+function applyModelConfig() {
+  const m = state.model;
+  if (!m) return;
+  const info = state.native;
+  if (info && info.native) {
+    bridge.saveAiConfig(info.provider, '', m.id);
+  } else {
+    bridge.saveAiConfig('openrouter', '', m.id);
+  }
+  renderKeyStep();
+}
+
+function renderKeyStep() {
+  const info = state.native;
+  const native = !!(info && info.native);
+  const keyless = native && !info.needsKey;
+  $('orKeyRow').classList.toggle('hidden', native);
+  $('nativeKeyRow').classList.toggle('hidden', !native || keyless);
+  $('codingRow').classList.toggle('hidden', !native || !info.codingPlan);
+  $('openrouterEscape').classList.toggle('hidden', !native);
+  $('nativeDocsRow').classList.toggle('hidden', !native);
+  if (native) {
+    $('nativeKey').placeholder = 'Paste your ' + info.keyLabel;
+    $('nativeDocs').textContent = 'Open the ' + info.name + ' console';
+    $('nativeDocs').dataset.docsUrl = info.docsUrl || '';
+    if (info.codingPlan && info.codingLabel)
+      $('codingLabel').textContent = info.codingLabel;
+    $('viaNote').textContent = info.name + ' is called directly — your key goes to '
+      + info.name + ' only, never to OpenRouter.';
+  } else {
+    $('viaNote').textContent = 'Served via OpenRouter — Moch can only reach this model '
+      + 'through an OpenRouter key today.';
+  }
+}
+
 function selectProvider(p) {
   state2.provider = p.id;
   $('providerPane').classList.add('hidden');
   $('modelPane').classList.remove('hidden');
   $('providerTitle').textContent = p.name;
   if (p.via === 'openrouter') {
-    $('providerKind').textContent = 'via OpenRouter - one key, pick any model';
+    $('providerKind').textContent = nativeIdFor(p.id)
+      ? 'direct — your own ' + (NATIVE_NAMES[nativeIdFor(p.id)] || nativeIdFor(p.id)) + ' key'
+      : 'served via OpenRouter - one key, pick any model';
     $('orModelSection').classList.remove('hidden');
     $('directModelSection').classList.add('hidden');
-    if (state.model) bridge.saveAiConfig('openai-compat', 'https://openrouter.ai/api/v1', state.model.id);
+    if (state.model) {
+      if (nativeIdFor(p.id)) {
+        state.native = {native: true, provider: nativeIdFor(p.id),
+                        name: NATIVE_NAMES[nativeIdFor(p.id)] || nativeIdFor(p.id),
+                        keyLabel: (NATIVE_NAMES[nativeIdFor(p.id)] || nativeIdFor(p.id)) + ' API key',
+                        needsKey: true, codingPlan: nativeIdFor(p.id) === 'zai'};
+        bridge.saveAiConfig(nativeIdFor(p.id), '', state.model.id);
+      } else {
+        state.native = null;
+        bridge.saveAiConfig('openrouter', '', state.model.id);
+      }
+    }
+    renderKeyStep();
     renderModels('');
     if (!state.models.length) bridge.fetchModels();
   } else {
@@ -525,6 +624,8 @@ function selectProvider(p) {
     $('directModelSection').classList.remove('hidden');
     $('dBaseUrl').value = p.direct.url;
     $('dModel').value = p.direct.model;
+    $('dKeyRow').classList.toggle('hidden', !p.direct.key);
+    $('dSaveRow').classList.toggle('hidden', !!p.direct.key);
   }
 }
 
@@ -544,7 +645,11 @@ async function renderSummary() {
   let ai = 'Not set up yet';
   try {
     const s = JSON.parse(await bridge.getAiSummary());
-    if (s.model) ai = s.model + (s.hasKey ? '  ·  key saved' : '  ·  no key yet');
+    if (s.model) {
+      ai = (s.providerName ? s.providerName + ' · ' : '') + s.model;
+      if (s.provider === 'zai' && s.codingPlan) ai += ' · GLM Coding Plan';
+      ai += s.hasKey ? '  ·  key saved' : '  ·  no key yet';
+    }
   } catch (e) {}
   addRow('AI model', ai);
   addRow('Privacy', 'Passwords and cookies stay in Moch, never sent to the model');
@@ -635,6 +740,7 @@ new QWebChannel(qt.webChannelTransport, channel => {
   state.selected = new Set(Array.isArray(sel) ? sel : []);
   const plats = await bridge.getPlatformStates();
   state.signed = new Set(Object.keys(plats || {}).filter(k => plats[k]));
+  await loadSlugMap();
   renderUses();
   renderImport();
   } catch (err) {
@@ -675,24 +781,81 @@ new QWebChannel(qt.webChannelTransport, channel => {
     const status = $('orStatus');
     if (!key) { status.className = 'status err'; status.textContent = 'Paste a key first.'; return; }
     if (!state.model) { status.className = 'status err'; status.textContent = 'Pick a model first.'; return; }
-    bridge.saveAiConfig('openai-compat', 'https://openrouter.ai/api/v1', state.model.id);
-    bridge.saveApiKey(key);
+    bridge.saveAiConfig('openrouter', '', state.model.id);
+    bridge.saveProviderKey('openrouter', key);
     status.className = 'status ok';
-    status.textContent = 'Saved. ' + state.model.id + ' is ready.';
+    status.textContent = 'Saved. ' + state.model.id + ' is ready via OpenRouter.';
   });
 
   $('orOauth').addEventListener('click', () => bridge.startOpenRouterOAuth());
 
+  // Native provider flow: the key belongs to the provider itself and is
+  // stored in the Secret Box under its own name.
+  $('nativeSave').addEventListener('click', () => {
+    const key = $('nativeKey').value.trim();
+    const status = $('orStatus');
+    const info = state.native;
+    if (!info || !info.native) { status.className = 'status err'; status.textContent = 'Pick a model first.'; return; }
+    if (!key) { status.className = 'status err'; status.textContent = 'Paste a key first.'; return; }
+    bridge.saveProviderKey(info.provider, key);
+    status.className = 'status ok';
+    status.textContent = 'Saved. Your ' + info.name + ' key stays on this machine and is '
+      + 'sent only to ' + info.name + '.';
+  });
+
+  $('codingPlan').addEventListener('change', e => bridge.setCodingPlan(e.target.checked));
+  $('nativeDocs').addEventListener('click', e => {
+    e.preventDefault();
+    const url = $('nativeDocs').dataset.docsUrl;
+    if (url) bridge.openExternal(url);
+  });
+  // Escape hatch: people who prefer a single OpenRouter key keep the old path.
+  $('viaOpenRouter').addEventListener('click', e => {
+    e.preventDefault();
+    state.native = null;
+    applyModelConfig();
+  });
+
+  // Direct/custom endpoints. Known native providers save their directory id
+  // (bare model id, directory endpoint unless the URL was changed); the
+  // rest keep the legacy manual wiring.
+  const DIRECT_PROVIDER_IDS = {
+    'ollama-local': 'ollama', 'lmstudio': 'lmstudio', 'openai-direct': 'openai',
+    'groq': 'groq', 'deepseek-direct': 'deepseek', 'mistral-direct': 'mistral',
+  };
   $('dSave').addEventListener('click', () => {
     const status = $('dStatus');
     const base = $('dBaseUrl').value.trim();
     const model = $('dModel').value.trim();
     if (!base || !model) { status.className = 'status err'; status.textContent = 'Base URL and model id are required.'; return; }
-    bridge.saveAiConfig('openai-compat', base, model);
+    const direct = DIRECT_PROVIDERS.find(x => x.id === state2.provider);
+    const nativeId = DIRECT_PROVIDER_IDS[state2.provider];
     const key = $('dKey').value.trim();
-    if (key) bridge.saveApiKey(key);
+    if (nativeId && direct) {
+      const auto = base === direct.url ? '' : base;
+      bridge.saveAiConfig(nativeId, auto, model);
+      if (key) bridge.saveProviderKey(nativeId, key);
+    } else {
+      bridge.saveAiConfig('openai-compat', base, model);
+      if (key) bridge.saveApiKey(key);
+    }
     status.className = 'status ok';
     status.textContent = 'Saved. ' + model + ' is ready.';
+  });
+  $('dSaveNoKey').addEventListener('click', () => {
+    const status = $('dStatus');
+    const base = $('dBaseUrl').value.trim();
+    const model = $('dModel').value.trim();
+    if (!base || !model) { status.className = 'status err'; status.textContent = 'Base URL and model id are required.'; return; }
+    const nativeId = DIRECT_PROVIDER_IDS[state2.provider];
+    const direct = DIRECT_PROVIDERS.find(x => x.id === state2.provider);
+    if (nativeId && direct) {
+      bridge.saveAiConfig(nativeId, base === direct.url ? '' : base, model);
+    } else {
+      bridge.saveAiConfig('openai-compat', base, model);
+    }
+    status.className = 'status ok';
+    status.textContent = 'Saved. ' + model + ' is ready — no key needed.';
   });
 });
 </script>

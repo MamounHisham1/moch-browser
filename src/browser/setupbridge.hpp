@@ -43,11 +43,34 @@ public:
     Q_INVOKABLE QVariantMap importBrowser(const QString &browserId);
 
     Q_INVOKABLE void fetchModels();
-    Q_INVOKABLE void saveAiConfig(const QString &mode, const QString &baseUrl,
+    // providerId is a ProviderDirectory id ("zai", "openai", …),
+    // "openrouter", or "openai-compat" for legacy manual wiring (explicit
+    // base URL, raw model id). Native ids strip the catalog slug prefix
+    // from the model and leave the base URL for request-time resolution;
+    // a non-empty baseUrl overrides the directory default.
+    Q_INVOKABLE void saveAiConfig(const QString &providerId, const QString &baseUrl,
                                   const QString &model);
+    // Stores the key in the SecretBox vault under
+    // ProviderDirectory::settingsKeyFor(providerId).
+    Q_INVOKABLE void saveProviderKey(const QString &providerId, const QString &key);
+    Q_INVOKABLE bool hasProviderKey(const QString &providerId) const;
+    // Legacy global key (env / 0600 key file chain), still used by the
+    // OpenRouter OAuth flow and custom manual wiring.
     Q_INVOKABLE void saveApiKey(const QString &key);
+    Q_INVOKABLE void setCodingPlan(bool codingPlan);
+    // Detects the native provider for an OpenRouter catalog model id
+    // ("z-ai/glm-4.6"): JSON {model, slug, native, provider, name,
+    // keyLabel, docsUrl, needsKey, codingPlan}. Non-native slugs report
+    // native=false (served via OpenRouter).
+    Q_INVOKABLE QString resolveModelProvider(const QString &modelId) const;
+    // JSON map of catalog slug → native provider id ("" when the slug has
+    // no native endpoint and stays OpenRouter-routed).
+    Q_INVOKABLE QString getSlugMap() const;
     Q_INVOKABLE QString getAiSummary() const;
     Q_INVOKABLE void startOpenRouterOAuth();
+    // Opens a URL (e.g. a provider key console) in this view, same as the
+    // platform sign-in flow; the wizard state persists in Settings.
+    Q_INVOKABLE void openExternal(const QString &url);
     Q_INVOKABLE void finish();
 
     static QJsonArray useCaseCatalog();

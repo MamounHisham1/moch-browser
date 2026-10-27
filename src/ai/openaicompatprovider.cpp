@@ -6,6 +6,7 @@
 #include <QNetworkRequest>
 #include <QTimer>
 
+#include "ai/providerdirectory.hpp"
 #include "storage/settings.hpp"
 
 namespace {
@@ -18,6 +19,51 @@ QString truncateDetail(const QString &detail)
         return detail;
     return detail.left(kErrorDetailLimit) + "…";
 }
+
+// Effective endpoint mode for a request.
+// - legacy: ai.provider unset, "openai-compat", or an unknown id (e.g. a
+//   hand-edited future provider). Behaves exactly as before the provider
+//   directory existed: base URL and key come straight from settings.
+// - openrouter: OpenRouter-routed requests, including models whose catalog
+//   slug has no native endpoint (anthropic, google, meta-llama, …).
+// - native: a ProviderDirectory id; requests go to the provider's own
+//   endpoint with the provider's own key.
+struct Endpoint
+{
+    QString providerId;
+    bool legacy = false;
+    bool openRouter = false;
+    bool needsKey = true;
+};
+
+Endpoint resolveEndpoint(const Settings *settings)
+{
+    Endpoint endpoint;
+    const QString raw = settings->get("ai.provider").toString().trimmed().toLower();
+    if (raw.isEmpty() || raw == QLatin1String("openai-compat")
+        || (raw != QLatin1String("openrouter")
+            && ProviderDirectory::byId(raw).id.isEmpty())) {
+        endpoint.providerId = QStringLiteral("openai-compat");
+        endpoint.legacy = true;
+        return endpoint;
+    }
+    endpoint.providerId = raw;
+    endpoint.openRouter = raw == QLatin1String("openrouter");
+    if (!endpoint.openRouter)
+        endpoint.needsKey = ProviderDirectory::byId(raw).needsKey;
+    return endpoint;
+}
+
+QString endpointBaseUrl(const Settings *settings, const Endpoint &endpoint)
+{
+    const QString configured = settings->get("ai.base_url").toString().trimmed();
+    if (endpoint.legacy || !ProviderDirectory::isGenericBaseUrl(configured))
+        return configured;
+    if (endpoint.openRouter)
+        return QStringLiteral("https://openrouter.ai/api/v1");
+    return ProviderDirectory::defaultBaseUrl(
+        endpoint.providerId, settings->get("ai.coding_plan", true).toBool());
+}
 } // namespace
 
 OpenAiCompatProvider::OpenAiCompatProvider(Settings *settings, QObject *parent)
@@ -28,19 +74,51 @@ OpenAiCompatProvider::OpenAiCompatProvider(Settings *settings, QObject *parent)
 QNetworkReply *OpenAiCompatProvider::sendRequest(const ChatRequest &request, bool stream,
                                                  RequestState *state)
 {
-    const QString key = m_settings->apiKey();
-    if (key.isEmpty()) {
+    const Endpoint endpoint = resolveEndpoint(m_settings);
+    QString key;
+    if (endpoint.needsKey) {
+        // Vault key for this provider wins, then the legacy chain
+        // (ai.api_key_env environment variable, else the 0600 key file).
+        key = endpoint.legacy
+                  ? m_settings->apiKey()
+                  : ProviderDirectory::providerKey(m_settings, endpoint.providerId);
+    }
+    if (endpoint.needsKey && key.isEmpty()) {
         ChatResponse response;
-        response.error = QString("no_api_key: no model API key configured. Add your key in "
-                                 "Moch's Settings dialog (Ctrl+,) or set the %1 environment "
-                                 "variable. Key file location: %2")
-                             .arg(m_settings->get("ai.api_key_env", "MOCH_API_KEY").toString(),
-                                  m_settings->secretPath());
+        if (endpoint.legacy) {
+            response.error = QString("no_api_key: no model API key configured. Add your "
+                                     "key in Moch's Settings dialog (Ctrl+,) or set the "
+                                     "%1 environment variable. Key file location: %2")
+                                 .arg(m_settings->get("ai.api_key_env", "MOCH_API_KEY")
+                                          .toString(),
+                                      m_settings->secretPath());
+        } else if (endpoint.openRouter) {
+            response.error = QString("no_api_key: no OpenRouter key configured — add it "
+                                     "in Settings → AI or Secret Box, sign in with "
+                                     "OpenRouter in the setup wizard, or set the %1 "
+                                     "environment variable. Key file location: %2")
+                                 .arg(m_settings->get("ai.api_key_env", "MOCH_API_KEY")
+                                          .toString(),
+                                      m_settings->secretPath());
+        } else {
+            const ProviderDirectory::NativeProvider provider =
+                ProviderDirectory::byId(endpoint.providerId);
+            response.error = QString("no_api_key: no %1 key configured — add it in "
+                                     "Settings → AI or Secret Box (%2), get one at %3, "
+                                     "or set the %4 environment variable. Key file "
+                                     "location: %5")
+                                 .arg(provider.name,
+                                      ProviderDirectory::settingsKeyFor(provider.id),
+                                      provider.docsUrl,
+                                      m_settings->get("ai.api_key_env", "MOCH_API_KEY")
+                                          .toString(),
+                                      m_settings->secretPath());
+        }
         finishState(state, response);
         return nullptr;
     }
 
-    const QString baseUrl = m_settings->get("ai.base_url").toString();
+    const QString baseUrl = endpointBaseUrl(m_settings, endpoint);
     const QString model = m_settings->get("ai.model").toString();
     const QUrl url(baseUrl + (baseUrl.endsWith("/") ? "" : "/") + "chat/completions");
 
@@ -70,7 +148,12 @@ QNetworkReply *OpenAiCompatProvider::sendRequest(const ChatRequest &request, boo
 
     QNetworkRequest networkRequest(url);
     networkRequest.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    networkRequest.setRawHeader("Authorization", "Bearer " + key.toUtf8());
+    if (!key.isEmpty())
+        networkRequest.setRawHeader("Authorization", "Bearer " + key.toUtf8());
+    // OpenRouter attribution headers are OpenRouter-specific; native
+    // providers must never receive them.
+    if (endpoint.openRouter)
+        networkRequest.setRawHeader("X-Title", "Moch");
 
     state->timer = new QTimer(this);
     state->timer->setSingleShot(true);

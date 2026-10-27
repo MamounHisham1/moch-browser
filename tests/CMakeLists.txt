@@ -110,6 +110,8 @@ set_tests_properties(tst_agent PROPERTIES
 qt_add_executable(tst_setup
     tst_setup.cpp
     ../src/ai/modelcatalog.cpp ../src/ai/modelcatalog.hpp
+    ../src/ai/providerdirectory.cpp ../src/ai/providerdirectory.hpp
+    ../src/security/secretbox.cpp ../src/security/secretbox.hpp
     ../src/browser/openrouterauth.cpp ../src/browser/openrouterauth.hpp
     ../src/browser/setupbridge.cpp ../src/browser/setupbridge.hpp
     ../src/browser/webview.cpp ../src/browser/webview.hpp

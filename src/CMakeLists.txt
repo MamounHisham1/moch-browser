@@ -3,6 +3,7 @@ qt_add_executable(moch
     ai/provider.cpp ai/provider.hpp
     ai/openaicompatprovider.cpp ai/openaicompatprovider.hpp
     ai/modelcatalog.cpp ai/modelcatalog.hpp
+    ai/providerdirectory.cpp ai/providerdirectory.hpp
     ai/providerregistry.cpp ai/providerregistry.hpp
     app/applicationcontroller.cpp app/applicationcontroller.hpp
     browser/bookmarkstore.cpp browser/bookmarkstore.hpp

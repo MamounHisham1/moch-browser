@@ -7,6 +7,7 @@
 #include "browser/browserimport.hpp"
 #include "browser/historystore.hpp"
 #include "browser/webview.hpp"
+#include "ai/providerdirectory.hpp"
 #include "storage/settings.hpp"
 
 namespace {
@@ -302,12 +303,43 @@ void SetupBridge::fetchModels()
     m_catalog->fetchModels();
 }
 
-void SetupBridge::saveAiConfig(const QString &mode, const QString &baseUrl,
+void SetupBridge::saveAiConfig(const QString &providerId, const QString &baseUrl,
                                const QString &model)
 {
-    m_settings->set("ai.provider", mode);
-    m_settings->set("ai.base_url", baseUrl);
-    m_settings->set("ai.model", model);
+    if (providerId == QLatin1String("openai-compat") || providerId.isEmpty()) {
+        // Legacy manual wiring: explicit base URL, raw model id, key via
+        // the legacy chain.
+        m_settings->set("ai.provider", QStringLiteral("openai-compat"));
+        m_settings->set("ai.base_url", baseUrl);
+        m_settings->set("ai.model", model);
+        return;
+    }
+    m_settings->set("ai.provider", providerId);
+    if (providerId == QLatin1String("openrouter")) {
+        // OpenRouter routes the full catalog slug ("z-ai/glm-4.6").
+        m_settings->set("ai.base_url", baseUrl);
+        m_settings->set("ai.model", model);
+        return;
+    }
+    // Native provider: bare model id, endpoint resolved at request time
+    // (coding-plan aware) unless an explicit override was stored.
+    m_settings->set("ai.base_url", baseUrl.trimmed());
+    m_settings->set("ai.model", ProviderDirectory::stripSlugPrefix(model));
+}
+
+void SetupBridge::saveProviderKey(const QString &providerId, const QString &key)
+{
+    ProviderDirectory::saveProviderKey(m_settings, providerId, key);
+}
+
+bool SetupBridge::hasProviderKey(const QString &providerId) const
+{
+    return ProviderDirectory::hasProviderKey(m_settings, providerId);
+}
+
+void SetupBridge::setCodingPlan(bool codingPlan)
+{
+    m_settings->set("ai.coding_plan", codingPlan);
 }
 
 void SetupBridge::saveApiKey(const QString &key)
@@ -316,10 +348,69 @@ void SetupBridge::saveApiKey(const QString &key)
         m_settings->saveApiKey(key.trimmed());
 }
 
+QString SetupBridge::resolveModelProvider(const QString &modelId) const
+{
+    const int slash = modelId.indexOf('/');
+    const QString slug = slash > 0 ? modelId.left(slash) : QString();
+    const ProviderDirectory::NativeProvider native = ProviderDirectory::forSlug(slug);
+    QJsonObject out;
+    out.insert("model", modelId);
+    out.insert("slug", slug);
+    if (native.id.isEmpty()) {
+        out.insert("native", false);
+        out.insert("provider", QStringLiteral("openrouter"));
+        out.insert("name", QStringLiteral("OpenRouter"));
+    } else {
+        out.insert("native", true);
+        out.insert("provider", native.id);
+        out.insert("name", native.name);
+        out.insert("keyLabel", native.keyLabel);
+        out.insert("docsUrl", native.docsUrl);
+        out.insert("needsKey", native.needsKey);
+        out.insert("codingPlan", !native.baseUrlCoding.isEmpty());
+        out.insert("codingLabel",
+                   QStringLiteral("GLM Coding Plan — works with your %1 subscription")
+                       .arg(native.name));
+    }
+    return QJsonDocument(out).toJson(QJsonDocument::Compact);
+}
+
+QString SetupBridge::getSlugMap() const
+{
+    static const char *const slugs[] = {"openai",       "z-ai",   "deepseek",
+                                        "groq",         "mistralai", "together",
+                                        "x-ai",         "anthropic", "google",
+                                        "meta-llama",   "qwen",   "moonshotai",
+                                        "minimax",      "nvidia", "perplexity",
+                                        "microsoft",    "cohere", "amazon-nova",
+                                        "ai21"};
+    QJsonObject map;
+    for (const char *slug : slugs) {
+        const QString name = QString::fromLatin1(slug);
+        map.insert(name, ProviderDirectory::forSlug(name).id);
+    }
+    return QJsonDocument(QJsonObject{{"slugs", map}}).toJson(QJsonDocument::Compact);
+}
+
 QString SetupBridge::getAiSummary() const
 {
-    return QJsonDocument(QJsonObject{{"model", m_settings->get("ai.model").toString()},
-                                     {"hasKey", !m_settings->apiKey().isEmpty()}})
+    const QString providerId = m_settings->get("ai.provider").toString();
+    const ProviderDirectory::NativeProvider native = ProviderDirectory::byId(providerId);
+    QString providerName = providerId;
+    if (providerId == QLatin1String("openrouter"))
+        providerName = QStringLiteral("OpenRouter");
+    else if (!native.id.isEmpty())
+        providerName = native.name;
+    else if (providerId == QLatin1String("openai-compat"))
+        providerName = QStringLiteral("custom endpoint");
+    return QJsonDocument(
+               QJsonObject{{"model", m_settings->get("ai.model").toString()},
+                           {"hasKey", ProviderDirectory::hasProviderKey(m_settings,
+                                                                        providerId)},
+                           {"provider", providerId},
+                           {"providerName", providerName},
+                           {"codingPlan",
+                            m_settings->get("ai.coding_plan", true).toBool()}})
         .toJson(QJsonDocument::Compact);
 }
 
@@ -332,6 +423,12 @@ void SetupBridge::startOpenRouterOAuth()
     emit oauthStarted(m_oauth->authUrl());
     if (m_view)
         m_view->load(QUrl(m_oauth->authUrl()));
+}
+
+void SetupBridge::openExternal(const QString &url)
+{
+    if (m_view && !url.trimmed().isEmpty())
+        m_view->load(QUrl(url));
 }
 
 void SetupBridge::finish()

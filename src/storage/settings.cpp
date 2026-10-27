@@ -16,11 +16,12 @@ static const QJsonObject defaultValues()
     agent.insert("confirm_downloads", true);
 
     QJsonObject ai;
-    ai.insert("provider", "openai-compat");
+    ai.insert("provider", "openrouter");
     ai.insert("base_url", "https://api.openai.com/v1");
     ai.insert("model", "gpt-4o-mini");
     ai.insert("api_key_env", "MOCH_API_KEY");
     ai.insert("temperature", 0.2);
+    ai.insert("coding_plan", true);
 
     QJsonObject privacy;
     privacy.insert("do_not_track", true);

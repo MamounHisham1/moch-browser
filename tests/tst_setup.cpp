@@ -1,4 +1,5 @@
 #include <QElapsedTimer>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -9,6 +10,7 @@
 #include <QtTest>
 
 #include "ai/modelcatalog.hpp"
+#include "ai/providerdirectory.hpp"
 #include "browser/openrouterauth.hpp"
 #include "browser/setupbridge.hpp"
 #include "storage/settings.hpp"
@@ -19,6 +21,12 @@ class tst_setup : public QObject
 private slots:
     void catalogParse();
     void catalogFallback();
+    void providerDirectorySlugs();
+    void providerDirectoryDefaults();
+    void settingsAiDefaults();
+    void modelPrefixStripping();
+    void keyResolutionPrecedence();
+    void bridgeResolveModelProvider();
     void useCaseCatalogComplete();
     void bridgeSelectionRoundtrip();
     void bridgeFinishMarksComplete();
@@ -65,6 +73,185 @@ void tst_setup::catalogFallback()
     QVERIFY2(ids.contains("openai/gpt-4o-mini"), "curated list includes a cheap default");
     QVERIFY(std::any_of(ids.cbegin(), ids.cend(),
                         [](const QString &id) { return id.contains(":free"); }));
+}
+
+void tst_setup::providerDirectorySlugs()
+{
+    // OpenRouter catalog slug → native provider mapping.
+    QCOMPARE(ProviderDirectory::forSlug(QStringLiteral("z-ai")).id,
+             QStringLiteral("zai"));
+    QCOMPARE(ProviderDirectory::forSlug(QStringLiteral("mistralai")).id,
+             QStringLiteral("mistral"));
+    QCOMPARE(ProviderDirectory::forSlug(QStringLiteral("x-ai")).id,
+             QStringLiteral("xai"));
+    QCOMPARE(ProviderDirectory::forSlug(QStringLiteral("openai")).id,
+             QStringLiteral("openai"));
+    QCOMPARE(ProviderDirectory::forSlug(QStringLiteral("deepseek")).id,
+             QStringLiteral("deepseek"));
+    // Slugs without an OpenAI-compatible native endpoint stay OpenRouter
+    // routed: the resolver reports an empty id.
+    QVERIFY(ProviderDirectory::forSlug(QStringLiteral("anthropic")).id.isEmpty());
+    QVERIFY(ProviderDirectory::forSlug(QStringLiteral("google")).id.isEmpty());
+    QVERIFY(ProviderDirectory::forSlug(QStringLiteral("meta-llama")).id.isEmpty());
+    QVERIFY(ProviderDirectory::forSlug(QString()).id.isEmpty());
+
+    QCOMPARE(ProviderDirectory::byId(QStringLiteral("openai")).baseUrl,
+             QStringLiteral("https://api.openai.com/v1"));
+    QVERIFY(ProviderDirectory::byId(QStringLiteral("no-such-provider")).id.isEmpty());
+    QCOMPARE(ProviderDirectory::settingsKeyFor(QStringLiteral("zai")),
+             QStringLiteral("provider-key:zai"));
+    QCOMPARE(ProviderDirectory::settingsKeyFor(QStringLiteral("openrouter")),
+             QStringLiteral("provider-key:openrouter"));
+
+    // Local runtimes need no key and point at localhost.
+    bool sawKeyless = false;
+    for (const ProviderDirectory::NativeProvider &provider : ProviderDirectory::all()) {
+        if (provider.needsKey) {
+            QVERIFY(!provider.keyLabel.isEmpty());
+            QVERIFY(!provider.docsUrl.isEmpty());
+            continue;
+        }
+        sawKeyless = true;
+        QVERIFY(provider.id == QLatin1String("ollama")
+                || provider.id == QLatin1String("lmstudio"));
+        QVERIFY(provider.baseUrl.startsWith("http://localhost"));
+        QVERIFY(provider.keyLabel.isEmpty());
+    }
+    QVERIFY(sawKeyless);
+}
+
+void tst_setup::providerDirectoryDefaults()
+{
+    // z.ai resolves per plan: coding endpoint (default) vs general API.
+    QCOMPARE(ProviderDirectory::defaultBaseUrl(QStringLiteral("zai"), true),
+             QStringLiteral("https://api.z.ai/api/coding/paas/v4"));
+    QCOMPARE(ProviderDirectory::defaultBaseUrl(QStringLiteral("zai"), false),
+             QStringLiteral("https://api.z.ai/api/paas/v4"));
+    QCOMPARE(ProviderDirectory::defaultBaseUrl(QStringLiteral("deepseek"), true),
+             QStringLiteral("https://api.deepseek.com"));
+    QCOMPARE(ProviderDirectory::defaultBaseUrl(QStringLiteral("groq"), false),
+             QStringLiteral("https://api.groq.com/openai/v1"));
+    QVERIFY(ProviderDirectory::defaultBaseUrl(QStringLiteral("unknown"), true).isEmpty());
+}
+
+void tst_setup::settingsAiDefaults()
+{
+    qputenv("XDG_CONFIG_HOME", (m_home.path() + "/cfg-ai").toUtf8());
+    qputenv("XDG_DATA_HOME", (m_home.path() + "/data-ai").toUtf8());
+    Settings settings;
+    // Fresh installs route via OpenRouter (backward compatible) with the
+    // coding-plan toggle on.
+    QCOMPARE(settings.get("ai.provider").toString(), QStringLiteral("openrouter"));
+    QCOMPARE(settings.get("ai.coding_plan", false).toBool(), true);
+}
+
+void tst_setup::modelPrefixStripping()
+{
+    QCOMPARE(ProviderDirectory::stripSlugPrefix(QStringLiteral("z-ai/glm-4.6")),
+             QStringLiteral("glm-4.6"));
+    QCOMPARE(ProviderDirectory::stripSlugPrefix(QStringLiteral("openai/gpt-4o-mini")),
+             QStringLiteral("gpt-4o-mini"));
+    QCOMPARE(ProviderDirectory::stripSlugPrefix(QStringLiteral("glm-4.6")),
+             QStringLiteral("glm-4.6"));
+
+    qputenv("XDG_CONFIG_HOME", (m_home.path() + "/cfg-strip").toUtf8());
+    qputenv("XDG_DATA_HOME", (m_home.path() + "/data-strip").toUtf8());
+    Settings settings;
+    SetupBridge bridge(&settings, nullptr, this);
+
+    // Native provider: base URL auto (resolved at request time), bare
+    // model id.
+    bridge.saveAiConfig(QStringLiteral("zai"), QString(), QStringLiteral("z-ai/glm-4.6"));
+    QCOMPARE(settings.get("ai.provider").toString(), QStringLiteral("zai"));
+    QCOMPARE(settings.get("ai.base_url").toString(), QString());
+    QCOMPARE(settings.get("ai.model").toString(), QStringLiteral("glm-4.6"));
+
+    // Coding-plan toggle feeds the endpoint choice.
+    bridge.setCodingPlan(false);
+    QCOMPARE(settings.get("ai.coding_plan").toBool(), false);
+    QCOMPARE(ProviderDirectory::defaultBaseUrl(QStringLiteral("zai"),
+                                               settings.get("ai.coding_plan").toBool()),
+             QStringLiteral("https://api.z.ai/api/paas/v4"));
+    bridge.setCodingPlan(true);
+
+    // OpenRouter keeps the full catalog slug.
+    bridge.saveAiConfig(QStringLiteral("openrouter"), QString(),
+                        QStringLiteral("z-ai/glm-4.6"));
+    QCOMPARE(settings.get("ai.provider").toString(), QStringLiteral("openrouter"));
+    QCOMPARE(settings.get("ai.model").toString(), QStringLiteral("z-ai/glm-4.6"));
+
+    // Legacy manual wiring is untouched: explicit base URL, raw model id.
+    bridge.saveAiConfig(QStringLiteral("openai-compat"), QStringLiteral("http://localhost:1234/v1"),
+                        QStringLiteral("z-ai/glm-4.6"));
+    QCOMPARE(settings.get("ai.provider").toString(), QStringLiteral("openai-compat"));
+    QCOMPARE(settings.get("ai.base_url").toString(),
+             QStringLiteral("http://localhost:1234/v1"));
+    QCOMPARE(settings.get("ai.model").toString(), QStringLiteral("z-ai/glm-4.6"));
+}
+
+void tst_setup::keyResolutionPrecedence()
+{
+    qputenv("XDG_CONFIG_HOME", (m_home.path() + "/cfg-key").toUtf8());
+    qputenv("XDG_DATA_HOME", (m_home.path() + "/data-key").toUtf8());
+    Settings settings;
+    settings.set("ai.api_key_env", QStringLiteral("MOCH_TST_SETUP_KEY"));
+    qunsetenv("MOCH_TST_SETUP_KEY");
+    QFile::remove(settings.secretPath());
+    settings.invalidateApiKey();
+
+    // No SecretBox entry, no env, no key file -> no key.
+    QVERIFY(!ProviderDirectory::hasProviderKey(&settings, QStringLiteral("zai")));
+    QVERIFY(ProviderDirectory::providerKey(&settings, QStringLiteral("zai")).isEmpty());
+
+    // Environment variable fills in.
+    qputenv("MOCH_TST_SETUP_KEY", "env-key-123");
+    settings.invalidateApiKey();
+    QCOMPARE(ProviderDirectory::providerKey(&settings, QStringLiteral("zai")),
+             QStringLiteral("env-key-123"));
+    qunsetenv("MOCH_TST_SETUP_KEY");
+
+    // Key file chain (Settings::saveApiKey) is the last fallback.
+    settings.saveApiKey(QStringLiteral("file-key-456"));
+    settings.invalidateApiKey();
+    QCOMPARE(ProviderDirectory::providerKey(&settings, QStringLiteral("zai")),
+             QStringLiteral("file-key-456"));
+    QVERIFY(ProviderDirectory::hasProviderKey(&settings, QStringLiteral("zai")));
+    // The vault name for a provider stays "provider-key:<id>"; when this
+    // target is linked with secretbox.cpp the vault branch takes precedence
+    // over both fallbacks above (covered by the wired configuration).
+    QCOMPARE(ProviderDirectory::settingsKeyFor(QStringLiteral("zai")),
+             QStringLiteral("provider-key:zai"));
+}
+
+void tst_setup::bridgeResolveModelProvider()
+{
+    qputenv("XDG_CONFIG_HOME", (m_home.path() + "/cfg-resolve").toUtf8());
+    qputenv("XDG_DATA_HOME", (m_home.path() + "/data-resolve").toUtf8());
+    Settings settings;
+    SetupBridge bridge(&settings, nullptr, this);
+
+    const QJsonObject zai = QJsonDocument::fromJson(
+                                bridge.resolveModelProvider(QStringLiteral("z-ai/glm-4.6"))
+                                    .toUtf8())
+                                .object();
+    QCOMPARE(zai.value("native").toBool(), true);
+    QCOMPARE(zai.value("provider").toString(), QStringLiteral("zai"));
+    QCOMPARE(zai.value("keyLabel").toString(), QStringLiteral("Z.AI API key"));
+    QCOMPARE(zai.value("codingPlan").toBool(), true);
+    QVERIFY(!zai.value("docsUrl").toString().isEmpty());
+
+    const QJsonObject mistral = QJsonDocument::fromJson(
+        bridge.resolveModelProvider(QStringLiteral("mistralai/mistral-small-3.1-24b-instruct"))
+            .toUtf8()).object();
+    QCOMPARE(mistral.value("native").toBool(), true);
+    QCOMPARE(mistral.value("provider").toString(), QStringLiteral("mistral"));
+    QCOMPARE(mistral.value("codingPlan").toBool(), false);
+
+    const QJsonObject anthropic = QJsonDocument::fromJson(
+        bridge.resolveModelProvider(QStringLiteral("anthropic/claude-sonnet-4")).toUtf8())
+                                    .object();
+    QCOMPARE(anthropic.value("native").toBool(), false);
+    QCOMPARE(anthropic.value("provider").toString(), QStringLiteral("openrouter"));
 }
 
 void tst_setup::useCaseCatalogComplete()
