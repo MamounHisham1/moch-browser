@@ -15,6 +15,7 @@ class QStackedWidget;
 class QTextBrowser;
 class QToolButton;
 class QVBoxLayout;
+class RoutinesStore;
 class Settings;
 class TabManager;
 class ToolRegistry;
@@ -31,6 +32,9 @@ public:
     bool isExpanded() const { return m_expanded; }
     void setExpanded(bool expanded);
     void applyTheme(const QString &theme);
+    // Scheduler tick for persisted routines: starts at most one due routine
+    // on the shared agent; driven by a 30 s timer and a startup catch-up.
+    void runDueRoutines();
 
 signals:
     void expandedChanged(bool expanded);
@@ -58,6 +62,8 @@ private:
     bool transcriptAtBottom() const;
     void scrollTranscriptToBottom();
     QString currentPageContext() const;
+    // Lazily creates the one AgentService shared by manual and routine runs.
+    void ensureAgent();
     // Session history panel and read-only replay of a stored session.
     void showHistoryPanel();
     void showTranscriptPage();
@@ -105,4 +111,10 @@ private:
     // and whether the streaming caret was detached while browsing history.
     int m_viewingSession = 0;
     bool m_streamDetached = false;
+    // Scheduled routines: the store, its tick timer, the header button and
+    // the routine owning the task currently on the agent (0 = manual task).
+    QToolButton *m_routinesButton = nullptr;
+    RoutinesStore *m_routines = nullptr;
+    QTimer *m_routineTimer = nullptr;
+    int m_activeRoutineId = 0;
 };

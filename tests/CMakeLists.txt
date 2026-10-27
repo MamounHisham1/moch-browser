@@ -193,6 +193,22 @@ set_tests_properties(tst_sessions PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
 )
 
+qt_add_executable(tst_routines
+    tst_routines.cpp
+    ../src/agent/routines.cpp ../src/agent/routines.hpp
+    ../src/storage/database.cpp ../src/storage/database.hpp
+    ../src/storage/settings.cpp ../src/storage/settings.hpp
+)
+
+target_include_directories(tst_routines PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+target_link_libraries(tst_routines PRIVATE Qt6::Core Qt6::Sql Qt6::Test)
+
+add_test(NAME tst_routines COMMAND tst_routines)
+set_tests_properties(tst_routines PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+)
+
 qt_add_executable(tst_secretbox
     tst_secretbox.cpp
     ../src/security/secretbox.cpp ../src/security/secretbox.hpp

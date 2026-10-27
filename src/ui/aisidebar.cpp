@@ -19,10 +19,12 @@
 #include <QVBoxLayout>
 
 #include "ui/icons.hpp"
+#include "ui/routinedialog.hpp"
 #include <QShortcut>
 #include <QVBoxLayout>
 #include <QWebEnginePage>
 
+#include "agent/routines.hpp"
 #include "agent/taskdetect.hpp"
 #include "ai/providerregistry.hpp"
 #include "browser/tabmanager.hpp"
@@ -37,6 +39,9 @@ namespace {
 // Distance (px) from the scrollbar maximum within which the view still
 // counts as pinned to the bottom of the transcript.
 constexpr int kBottomSlackPx = 40;
+
+// Routine scheduler cadence: due routines are polled this often.
+constexpr int kRoutineTickMs = 30 * 1000;
 
 QString stateLabel(AgentService::State state)
 {
@@ -233,6 +238,23 @@ QString relativeTime(qint64 secsSinceEpoch)
         .date()
         .toString(QStringLiteral("yyyy-MM-dd"));
 }
+
+// Stored-state name for a finished routine run; mirrors the session state
+// names the history list uses so routines read consistently there.
+QString routineStateName(AgentService::State state)
+{
+    switch (state) {
+    case AgentService::State::Idle: return QStringLiteral("idle");
+    case AgentService::State::Running: return QStringLiteral("running");
+    case AgentService::State::AwaitingApproval:
+        return QStringLiteral("awaiting_approval");
+    case AgentService::State::Done: return QStringLiteral("done");
+    case AgentService::State::Failed: return QStringLiteral("failed");
+    case AgentService::State::Cancelled: return QStringLiteral("cancelled");
+    case AgentService::State::TimedOut: return QStringLiteral("timed_out");
+    }
+    return QStringLiteral("unknown");
+}
 } // namespace
 
 AiSidebar::AiSidebar(Settings *settings, TabManager *tabs, ToolRegistry *tools, QWidget *parent)
@@ -273,6 +295,17 @@ AiSidebar::AiSidebar(Settings *settings, TabManager *tabs, ToolRegistry *tools, 
             showTranscriptPage();
         }
     });
+    m_routinesButton = new QToolButton(this);
+    m_routinesButton->setObjectName("iconButton");
+    m_routinesButton->setProperty("iconName", "reload");
+    m_routinesButton->setToolTip(tr("Scheduled routines"));
+    m_routinesButton->setAutoRaise(true);
+    connect(m_routinesButton, &QToolButton::clicked, this, [this] {
+        if (!m_routines)
+            return;
+        RoutineDialog dialog(m_routines, this);
+        dialog.exec();
+    });
     m_backButton = new QToolButton(this);
     m_backButton->setObjectName("iconButton");
     m_backButton->setProperty("iconName", "arrow-left");
@@ -290,6 +323,7 @@ AiSidebar::AiSidebar(Settings *settings, TabManager *tabs, ToolRegistry *tools, 
     header->addStretch(1);
     header->addWidget(m_backButton);
     header->addWidget(m_historyButton);
+    header->addWidget(m_routinesButton);
     header->addWidget(m_closeButton);
 
     m_transcript = new QTextEdit(this);
@@ -324,6 +358,15 @@ AiSidebar::AiSidebar(Settings *settings, TabManager *tabs, ToolRegistry *tools, 
         if (m_historyButton->isChecked())
             renderHistoryList();
     });
+
+    m_routines = new RoutinesStore(this);
+    m_routineTimer = new QTimer(this);
+    m_routineTimer->setInterval(kRoutineTickMs);
+    connect(m_routineTimer, &QTimer::timeout, this, &AiSidebar::runDueRoutines);
+    m_routineTimer->start();
+    // Startup catch-up: routines missed while Moch was closed are overdue
+    // and fire once here, after the app has settled.
+    QTimer::singleShot(2 * 1000, this, &AiSidebar::runDueRoutines);
 
     m_input = new QLineEdit(this);
     m_input->setPlaceholderText(tr("Ask about this page — or just give a task, e.g. open github.com"));
@@ -392,6 +435,7 @@ void AiSidebar::applyTheme(const QString &theme)
     const ThemeColors colors = ThemeColors::forTheme(theme);
     m_closeButton->setIcon(Icons::get("close", colors.icon, 16));
     m_historyButton->setIcon(Icons::get("clock", colors.icon, 16));
+    m_routinesButton->setIcon(Icons::get("reload", colors.icon, 16));
     m_backButton->setIcon(Icons::get("arrow-left", colors.icon, 16));
     m_sendButton->setIcon(Icons::get("sparkles", QColor("#ffffff"), 15));
     m_stopButton->setIcon(Icons::get("close", QColor("#ffffff"), 15));
@@ -417,17 +461,7 @@ void AiSidebar::onSubmit()
     if (m_streamingBubble)
         finishAssistantBubble(); // flush an in-flight reply before appending
 
-    m_provider = ProviderRegistry::providerFor(m_settings);
-    if (!m_agent) {
-        m_agent = new AgentService(m_settings, m_provider, m_tools, this);
-        m_agent->setSessionsStore(m_sessions);
-        connect(m_agent, &AgentService::stateChanged, this,
-                &AiSidebar::onAgentStateChanged);
-        connect(m_agent, &AgentService::stepRecorded, this, &AiSidebar::onAgentStep);
-        connect(m_agent, &AgentService::taskFinished, this, &AiSidebar::onAgentFinished);
-        connect(m_agent->approvalGate(), &ApprovalGate::approvalRequested, this,
-                &AiSidebar::onApprovalRequested);
-    }
+    ensureAgent();
 
     const QString pageContext = currentPageContext();
 
@@ -482,6 +516,55 @@ void AiSidebar::onSubmit()
     m_provider->chatStream(request, [this](ChatResponse response) {
         onChatFinished(response);
     });
+}
+
+// Lazily create the single AgentService the sidebar owns; manual tasks and
+// scheduled routines share it, so routine runs land in the same visible
+// timeline and the same session history as user-started tasks.
+void AiSidebar::ensureAgent()
+{
+    m_provider = ProviderRegistry::providerFor(m_settings);
+    if (m_agent)
+        return;
+    m_agent = new AgentService(m_settings, m_provider, m_tools, this);
+    m_agent->setSessionsStore(m_sessions);
+    connect(m_agent, &AgentService::stateChanged, this,
+            &AiSidebar::onAgentStateChanged);
+    connect(m_agent, &AgentService::stepRecorded, this, &AiSidebar::onAgentStep);
+    connect(m_agent, &AgentService::taskFinished, this, &AiSidebar::onAgentFinished);
+    connect(m_agent->approvalGate(), &ApprovalGate::approvalRequested, this,
+            &AiSidebar::onApprovalRequested);
+}
+
+// Routine scheduler tick: start at most one due routine on an idle agent;
+// everything else due is stamped skipped_busy and rescheduled by the store,
+// so it retries on its next interval. Routines only advance while Moch runs
+// — ones missed during a closure stay overdue and fire on a tick like any
+// other, so they catch up exactly once at launch.
+void AiSidebar::runDueRoutines()
+{
+    if (!m_routines)
+        return;
+    const QList<RoutinesStore::Due> dueRoutines =
+        m_routines->due(QDateTime::currentSecsSinceEpoch());
+    bool started = false;
+    for (const RoutinesStore::Due &routine : dueRoutines) {
+        const bool agentBusy = m_agent
+            && (m_agent->state() == AgentService::State::Running
+                || m_agent->state() == AgentService::State::AwaitingApproval);
+        if (started || agentBusy) {
+            m_routines->touch(routine.id, false, QStringLiteral("skipped_busy"));
+            continue;
+        }
+        // Stamp and reschedule before starting so the cadence holds even if
+        // this run hangs; the final state is recorded from taskFinished in
+        // onAgentFinished.
+        m_routines->touch(routine.id, true, QStringLiteral("triggered"));
+        m_activeRoutineId = routine.id;
+        ensureAgent();
+        m_agent->startTask(routine.goal, QString());
+        started = true;
+    }
 }
 
 QString AiSidebar::currentPageContext() const
@@ -710,6 +793,15 @@ void AiSidebar::onAgentStep(const AgentService::StepRecord &record)
 
 void AiSidebar::onAgentFinished(AgentService::State state, const QString &summary)
 {
+    // A routine-scheduled run finished: record its final state on the
+    // routine (the fire-time touch already scheduled the next run).
+    if (m_activeRoutineId > 0) {
+        if (m_routines) {
+            m_routines->recordOutcome(m_activeRoutineId,
+                                      routineStateName(state));
+        }
+        m_activeRoutineId = 0;
+    }
     m_stopButton->setVisible(false);
     m_sendButton->setVisible(true);
     m_approveButton->setVisible(false);

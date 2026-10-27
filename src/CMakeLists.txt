@@ -18,6 +18,7 @@ qt_add_executable(moch
     browser/webview.cpp browser/webview.hpp
     ui/aisidebar.cpp ui/aisidebar.hpp
     ui/icons.cpp ui/icons.hpp
+    ui/routinedialog.cpp ui/routinedialog.hpp
     ui/downloadspanel.cpp ui/downloadspanel.hpp
     ui/mainwindow.cpp ui/mainwindow.hpp
     ui/secretboxdialog.cpp ui/secretboxdialog.hpp
@@ -39,6 +40,7 @@ qt_add_executable(moch
     security/permissionpolicy.cpp security/permissionpolicy.hpp
     agent/agentservice.cpp agent/agentservice.hpp
     agent/approvalgate.cpp agent/approvalgate.hpp
+    agent/routines.cpp agent/routines.hpp
     agent/taskdetect.cpp agent/taskdetect.hpp
     resources/moch.qrc
 )
