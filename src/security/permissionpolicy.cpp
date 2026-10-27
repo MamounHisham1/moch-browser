@@ -54,6 +54,18 @@ DecisionDetail decideDetailed(Permission permission, const QString &toolName, Ri
                                "requires explicit approval")};
     }
 
+    // Uploading local files sends user data to the site; like secret
+    // injection it always requires explicit approval, and read-only denies
+    // it outright. The classifier's reason lists the exact paths.
+    if (tool == QLatin1String("upload_files")) {
+        if (permission == Permission::ReadOnly)
+            return {Decision::Deny,
+                    QStringLiteral("read-only permission denies file uploads")};
+        return {Decision::NeedsApproval,
+                QStringLiteral("upload_files sends local files to a page and always "
+                               "requires explicit approval")};
+    }
+
     if (permission == Permission::ReadOnly) {
         if (kActionTools.contains(tool))
             return {Decision::Deny,

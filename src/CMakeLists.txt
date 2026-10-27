@@ -28,6 +28,7 @@ qt_add_executable(moch
     tools/toolregistry.cpp tools/toolregistry.hpp
     tools/pagetools.cpp tools/pagetools.hpp
     tools/secretboxtools.cpp
+    tools/uploadfiles.cpp
     storage/database.cpp storage/database.hpp
     storage/sessionsstore.cpp storage/sessionsstore.hpp
     storage/settings.cpp storage/settings.hpp

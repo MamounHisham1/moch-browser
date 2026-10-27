@@ -1,7 +1,9 @@
 #include "riskclassifier.hpp"
 
+#include <QJsonArray>
 #include <QRegularExpression>
 #include <QUrl>
+#include <QStringList>
 
 namespace Security {
 namespace {
@@ -22,6 +24,14 @@ QString argString(const QJsonObject &args, const QString &key)
 {
     const QJsonValue v = args.value(key);
     return v.isString() ? v.toString() : QString();
+}
+
+QStringList pathList(const QJsonObject &args)
+{
+    QStringList out;
+    for (const QJsonValue &v : args.value(QLatin1String("paths")).toArray())
+        out.append(v.toString());
+    return out;
 }
 
 QString matchedWord(const QString &haystack, const QStringList &words)
@@ -67,6 +77,22 @@ ClassifyDetail classifyDetailed(const QString &toolName, const QJsonObject &args
 
     if (tool == QLatin1String("list_secrets"))
         return {Risk::Safe, QStringLiteral("list_secrets returns names only, never values")};
+
+    // Uploading local files exposes user data to the site. Always
+    // sensitive; the reason lists every path so the user sees exactly what
+    // would leave the machine. Contents are never read into the
+    // conversation.
+    if (tool == QLatin1String("upload_files")) {
+        const QStringList paths = pathList(args);
+        QString listing = paths.join(QStringLiteral(", "));
+        if (listing.size() > 400)
+            listing = listing.left(400) + QStringLiteral("...");
+        return sensitive(QStringLiteral("upload_files sends %1 local file(s) to the "
+                                        "page: %2")
+                             .arg(paths.size())
+                             .arg(listing.isEmpty() ? QStringLiteral("(none listed)")
+                                                    : listing));
+    }
 
     // Secret injection is always sensitive; the reason carries the secret
     // NAME and purpose only — never the value (values are not in args).

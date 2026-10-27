@@ -14,6 +14,14 @@ ToolRegistry::ToolRegistry(TabManager *tabs, QObject *parent)
 {
     registerBuiltinTools(this);
     registerSecretBoxTools(this);
+#if defined(__GNUC__)
+    // Weak import: null when tools/uploadfiles.cpp is not linked into this
+    // target, so consumers keep linking before CMake wiring lands.
+    if (registerUploadTools)
+        registerUploadTools(this);
+#else
+    registerUploadTools(this);
+#endif
 }
 
 void ToolRegistry::registerTool(Tool *tool)

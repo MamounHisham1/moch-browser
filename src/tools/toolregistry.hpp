@@ -30,3 +30,14 @@ private:
 
 // Registers the Secret Box tools (list_secrets, fill_secret).
 void registerSecretBoxTools(ToolRegistry *registry);
+
+// Registers the agent file-upload tool (upload_files). Declared weak so
+// targets that do not link tools/uploadfiles.cpp still link: the symbol
+// resolves to null there and registration is skipped (see the guarded call
+// in ToolRegistry::ToolRegistry). It activates automatically once the file
+// joins a CMake target.
+#if defined(__GNUC__)
+__attribute__((weak)) void registerUploadTools(ToolRegistry *registry);
+#else
+void registerUploadTools(ToolRegistry *registry);
+#endif
