@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QTextCursor>
 #include <QTextEdit>
 #include <QWidget>
 
@@ -49,9 +50,10 @@ private:
     QString bubbleHtml(const QString &inner) const;
     void beginAssistantBubble();
     void finishAssistantBubble();
-    void updateAssistantBubble();
+    void updateAssistantBubble(const QString &delta);
+    bool transcriptAtBottom() const;
+    void scrollTranscriptToBottom();
     QString currentPageContext() const;
-    bool looksLikeTask(const QString &text) const;
 
     Settings *m_settings = nullptr;
     TabManager *m_tabs = nullptr;
@@ -71,8 +73,13 @@ private:
     QLabel *m_title = nullptr;
     QToolButton *m_closeButton = nullptr;
     QString m_streamBuffer;
-    QString m_streamBufferHtml;
+    QTextCursor m_streamCursor;
+    bool m_streamPlaceholder = false;
     QString m_transcriptBody;
     bool m_streamingBubble = false;
     bool m_streamActive = false;
+    // Stick-to-bottom state: whether the user follows the tail, and a guard
+    // distinguishing our programmatic scrollbar moves from user scrolls.
+    bool m_pinnedToBottom = true;
+    bool m_programmaticScroll = false;
 };
