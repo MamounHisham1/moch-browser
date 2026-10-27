@@ -22,6 +22,7 @@ private slots:
     void toolsReachRealTabs();
     void agentCompletesWithToolCall();
     void agentApprovalFlow();
+    void agentSecretConsentOncePerTask();
     void agentReadOnlyDenies();
     void agentInvalidModelJsonStillRecovers();
     void cleanupTestCase();
@@ -161,6 +162,33 @@ void tst_agent::agentApprovalFlow()
     }));
     QCOMPARE(agent.state(), AgentService::State::Done);
     QVERIFY(agent.transcriptJson().contains("approval"));
+}
+
+void tst_agent::agentSecretConsentOncePerTask()
+{
+    m_settings->set("agent.permission_level", "cautious");
+    m_server.setScenarioQueue({MockOpenAiServer::ToolCallFillSecret,
+                               MockOpenAiServer::ToolCallFillSecret,
+                               MockOpenAiServer::PlainMessage});
+
+    AgentService agent(m_settings, m_provider, m_registry, this);
+    QList<AgentService::State> states;
+    connect(&agent, &AgentService::stateChanged,
+            [&](AgentService::State state) { states.append(state); });
+
+    agent.startTask("fill the password field", QString());
+    QVERIFY(waitFor([&] { return agent.state() == AgentService::State::AwaitingApproval; }));
+    agent.approvalGate()->answer(true);
+
+    QVERIFY(waitFor([&] {
+        return agent.state() == AgentService::State::Done
+               || agent.state() == AgentService::State::Failed;
+    }));
+    QCOMPARE(agent.state(), AgentService::State::Done);
+    // The second fill_secret for the same secret within this task must not
+    // re-prompt: consent is once per task.
+    QCOMPARE(states.count(AgentService::State::AwaitingApproval), 1);
+    QVERIFY(agent.transcriptJson().contains("fill_secret"));
 }
 
 void tst_agent::agentReadOnlyDenies()

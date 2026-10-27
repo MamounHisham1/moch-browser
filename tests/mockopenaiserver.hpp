@@ -9,7 +9,7 @@ class MockOpenAiServer : public QObject
 {
     Q_OBJECT
 public:
-    enum Scenario { PlainMessage, ToolCalls, ToolCallClickSubmit, Unauthorized, Malformed, StreamContent, StreamToolCalls };
+    enum Scenario { PlainMessage, ToolCalls, ToolCallClickSubmit, ToolCallFillSecret, Unauthorized, Malformed, StreamContent, StreamToolCalls };
 
     struct CapturedRequest
     {

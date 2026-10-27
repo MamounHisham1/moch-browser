@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QJsonObject>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QTimer>
 
@@ -81,4 +82,10 @@ private:
     // guard so a task that finishes twice (e.g. cancel + timeout) saves once.
     qint64 m_startedAt = 0;
     bool m_sessionSaved = false;
+    // Once-per-task secret consent: names whose injection was already
+    // approved (via the in-chat form or an earlier fill_secret approval).
+    QSet<QString> m_approvedSecrets;
+    // Wall-clock budget parking while a credential card waits on a human.
+    bool m_wallClockPaused = false;
+    qint64 m_wallClockRemainingMs = 0;
 };

@@ -57,6 +57,16 @@ AgentService::AgentService(Settings *settings, LlmProvider *provider, ToolRegist
         cancel();
         finish(State::TimedOut, "The task was stopped after reaching its time limit.");
     });
+    // A human typing into the credential card must not burn the task's
+    // wall-clock budget: park the timer while the form is open.
+    connect(m_tools, &ToolRegistry::secretBoxRequested, this, [this] {
+        if (m_wallClockPaused
+            || (m_state != State::Running && m_state != State::AwaitingApproval))
+            return;
+        m_wallClockRemainingMs = qMax<qint64>(1000, m_wallClock->remainingTime());
+        m_wallClock->stop();
+        m_wallClockPaused = true;
+    });
 }
 
 void AgentService::setState(State state)
@@ -90,6 +100,8 @@ void AgentService::startTask(const QString &goal, const QString &pageContext)
     m_toolCallCount = 0;
     m_pendingCalls = 0;
     m_cancelRequested = false;
+    m_approvedSecrets.clear();
+    m_wallClockPaused = false;
     m_startedAt = QDateTime::currentSecsSinceEpoch();
     m_sessionSaved = false;
 
@@ -224,10 +236,25 @@ void AgentService::executeToolCall(const QJsonObject &call)
         m_toolCallCount++;
         emit progress(QString("Running %1").arg(name));
         m_tools->execute(name, args, [this, name, id](ToolResult result) {
+            // The credential card resolved (submit or dismiss): hand the
+            // remaining wall-clock budget back to the task.
+            if (name == QLatin1String("request_secrets") && m_wallClockPaused) {
+                m_wallClockPaused = false;
+                m_wallClock->start(int(m_wallClockRemainingMs));
+            }
             QJsonObject data = result.data;
             data.insert("ok", result.ok);
             if (!result.ok)
                 data.insert("error", result.errorCode);
+            // Filling the form IS the consent: those secrets may be
+            // injected for the rest of the task without re-prompting.
+            if (name == QLatin1String("request_secrets") && result.ok) {
+                for (const QJsonValue &entry : data.value("fields").toArray()) {
+                    const QJsonObject record = entry.toObject();
+                    if (record.value("saved").toBool())
+                        m_approvedSecrets.insert(record.value("name").toString());
+                }
+            }
             const QString payload = QString::fromUtf8(
                 QJsonDocument(data).toJson(QJsonDocument::Compact));
             step("tool", name, result.ok ? payload.left(300) : result.errorMessage,
@@ -250,7 +277,13 @@ void AgentService::executeToolCall(const QJsonObject &call)
             runLoop();
         return;
     }
-    if (decision == Security::Decision::NeedsApproval) {
+    // Once-per-task secret consent: injecting a secret the user already
+    // provided via the in-chat form, or already approved earlier in this
+    // task, does not re-prompt. A new task starts with a clean slate.
+    const bool secretConsented =
+        name == QLatin1String("fill_secret")
+        && m_approvedSecrets.contains(args.value("secret_name").toString());
+    if (decision == Security::Decision::NeedsApproval && !secretConsented) {
         setState(State::AwaitingApproval);
         emit progress(QString("Approval needed for %1").arg(name));
         step("approval", name, classification.reason, true);
@@ -260,7 +293,7 @@ void AgentService::executeToolCall(const QJsonObject &call)
         request.detail = QString::fromUtf8(QJsonDocument(args).toJson(QJsonDocument::Compact));
         m_gate->ask(request);
         connect(m_gate, &ApprovalGate::resolved, this,
-                [this, runTool, name, id](bool approved) {
+                [this, runTool, name, id, args](bool approved) {
                     disconnect(m_gate, &ApprovalGate::resolved, this, nullptr);
                     setState(State::Running);
                     if (m_cancelRequested) {
@@ -276,6 +309,9 @@ void AgentService::executeToolCall(const QJsonObject &call)
                             runLoop();
                         return;
                     }
+                    if (name == QLatin1String("fill_secret"))
+                        m_approvedSecrets.insert(
+                            args.value("secret_name").toString());
                     runTool();
                 });
         return;
