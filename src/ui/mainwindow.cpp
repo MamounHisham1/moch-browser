@@ -1,5 +1,6 @@
 #include "ui/mainwindow.hpp"
 
+#include <QApplication>
 #include <QDialog>
 #include <QFile>
 #include <QHBoxLayout>
@@ -8,6 +9,7 @@
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMenu>
+#include <QPalette>
 #include <QShortcut>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -29,6 +31,62 @@
 #include "ui/settingsdialog.hpp"
 #include "ui/tabbar.hpp"
 #include "ui/toolbar.hpp"
+
+namespace {
+// QSS covers most surfaces, but style-drawn primitives (tab scroll arrows,
+// combo popups, placeholder and disabled text) still read the palette. Keep
+// it in sync with the theme so nothing renders light-on-light or dark-on-dark.
+QPalette themePalette(const QString &theme)
+{
+    QPalette palette;
+    if (theme == "light") {
+        palette.setColor(QPalette::Window, QColor("#f2f3f6"));
+        palette.setColor(QPalette::WindowText, QColor("#1d2026"));
+        palette.setColor(QPalette::Base, QColor("#ffffff"));
+        palette.setColor(QPalette::AlternateBase, QColor("#f4f5f8"));
+        palette.setColor(QPalette::Text, QColor("#1d2026"));
+        palette.setColor(QPalette::Button, QColor("#ececef"));
+        palette.setColor(QPalette::ButtonText, QColor("#1d2026"));
+        palette.setColor(QPalette::ToolTipBase, QColor("#ffffff"));
+        palette.setColor(QPalette::ToolTipText, QColor("#1d2026"));
+        palette.setColor(QPalette::Highlight, QColor("#3d6ea5"));
+        palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
+        palette.setColor(QPalette::Link, QColor("#3d6ea5"));
+        palette.setColor(QPalette::PlaceholderText, QColor("#9aa0ab"));
+        const QColor disabledText("#a7abb3");
+        palette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
+        palette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
+        palette.setColor(QPalette::Disabled, QPalette::ButtonText, disabledText);
+        palette.setColor(QPalette::Disabled, QPalette::Base, QColor("#f2f2f4"));
+        palette.setColor(QPalette::Disabled, QPalette::Window, QColor("#f2f2f4"));
+        palette.setColor(QPalette::Disabled, QPalette::Highlight, QColor("#dfe7f3"));
+        palette.setColor(QPalette::Disabled, QPalette::HighlightedText, disabledText);
+        return palette;
+    }
+    palette.setColor(QPalette::Window, QColor("#1f2127"));
+    palette.setColor(QPalette::WindowText, QColor("#e9ebf0"));
+    palette.setColor(QPalette::Base, QColor("#17191f"));
+    palette.setColor(QPalette::AlternateBase, QColor("#1d2027"));
+    palette.setColor(QPalette::Text, QColor("#e9ebf0"));
+    palette.setColor(QPalette::Button, QColor("#262a33"));
+    palette.setColor(QPalette::ButtonText, QColor("#e9ebf0"));
+    palette.setColor(QPalette::ToolTipBase, QColor("#262a33"));
+    palette.setColor(QPalette::ToolTipText, QColor("#e9ebf0"));
+    palette.setColor(QPalette::Highlight, QColor("#5b8def"));
+    palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
+    palette.setColor(QPalette::Link, QColor("#5b8def"));
+    palette.setColor(QPalette::PlaceholderText, QColor("#6d727d"));
+    const QColor disabledText("#5d626c");
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
+    palette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, disabledText);
+    palette.setColor(QPalette::Disabled, QPalette::Base, QColor("#1b1d23"));
+    palette.setColor(QPalette::Disabled, QPalette::Window, QColor("#1b1d23"));
+    palette.setColor(QPalette::Disabled, QPalette::Highlight, QColor("#3a4356"));
+    palette.setColor(QPalette::Disabled, QPalette::HighlightedText, QColor("#9aa0ab"));
+    return palette;
+}
+} // namespace
 
 MainWindow::MainWindow(Settings *settings, TabManager *tabs, HistoryStore *history,
                        BookmarkStore *bookmarks, DownloadManager *downloads, QWidget *parent)
@@ -438,6 +496,7 @@ void MainWindow::applyTheme()
         setStyleSheet(QString::fromUtf8(qss.readAll()));
     else
         qWarning("moch: theme %s not found", qPrintable(theme));
+    QApplication::setPalette(themePalette(theme));
     m_toolbar->applyTheme(theme);
     m_tabBar->applyTheme(theme);
     m_aiSidebar->applyTheme(theme);

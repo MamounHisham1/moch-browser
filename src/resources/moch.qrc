@@ -22,6 +22,7 @@
         <file alias="globe.svg">icons/globe.svg</file>
         <file alias="chevron-up.svg">icons/chevron-up.svg</file>
         <file alias="chevron-down.svg">icons/chevron-down.svg</file>
+        <file alias="combo-arrow.svg">icons/combo-arrow.svg</file>
         <file alias="search.svg">icons/search.svg</file>
         <file alias="clock.svg">icons/clock.svg</file>
         <file alias="bookmark.svg">icons/bookmark.svg</file>

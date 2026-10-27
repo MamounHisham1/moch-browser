@@ -262,6 +262,8 @@ AiSidebar::AiSidebar(Settings *settings, TabManager *tabs, ToolRegistry *tools, 
 {
     setObjectName("aiSidebar");
     setFixedWidth(380);
+    // Let the QSS theme paint this QWidget subclass background/border.
+    setAttribute(Qt::WA_StyledBackground, true);
 
     auto *header = new QHBoxLayout();
     header->setContentsMargins(2, 0, 0, 0);
@@ -369,6 +371,7 @@ AiSidebar::AiSidebar(Settings *settings, TabManager *tabs, ToolRegistry *tools, 
     QTimer::singleShot(2 * 1000, this, &AiSidebar::runDueRoutines);
 
     m_input = new QLineEdit(this);
+    m_input->setObjectName(QStringLiteral("aiInput"));
     m_input->setPlaceholderText(tr("Ask about this page — or just give a task, e.g. open github.com"));
     connect(m_input, &QLineEdit::returnPressed, this, &AiSidebar::onSubmit);
 

@@ -10,6 +10,9 @@
 DownloadsPanel::DownloadsPanel(DownloadManager *downloads, QWidget *parent)
     : QWidget(parent, Qt::Popup), m_downloads(downloads)
 {
+    setObjectName(QStringLiteral("downloadsPanel"));
+    // Let the QSS theme paint this QWidget subclass background/border.
+    setAttribute(Qt::WA_StyledBackground, true);
     setFixedWidth(420);
     setMinimumHeight(140);
 

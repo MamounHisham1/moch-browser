@@ -34,7 +34,10 @@ TabBar::TabBar(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName("tabStrip");
+    // Plain QWidget ignores QSS backgrounds unless this is set.
+    setAttribute(Qt::WA_StyledBackground, true);
     m_tabs = new PressAwareTabBar(this);
+    m_tabs->setDrawBase(false);
     m_tabs->setTabsClosable(true);
     m_tabs->setMovable(true);
     m_tabs->setExpanding(false);
@@ -50,7 +53,7 @@ TabBar::TabBar(QWidget *parent)
     m_newTabButton->setIcon(Icons::get("plus", ThemeColors::forTheme("dark").icon, 16));
     m_newTabButton->setToolTip(tr("New tab (Ctrl+T)"));
     m_newTabButton->setAutoRaise(true);
-    m_newTabButton->setFixedSize(30, 28);
+    m_newTabButton->setFixedSize(30, 30);
     m_newTabButton->setIconSize(QSize(16, 16));
     connect(m_newTabButton, &QToolButton::clicked, this, &TabBar::newTabRequested);
 

@@ -12,6 +12,8 @@ Toolbar::Toolbar(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName("navToolbar");
+    // Plain QWidget ignores QSS backgrounds unless this is set.
+    setAttribute(Qt::WA_StyledBackground, true);
 
     m_back = makeButton("arrow-left");
     m_back->setToolTip(tr("Back (Alt+←)"));
@@ -76,7 +78,8 @@ QToolButton *Toolbar::makeButton(const QString &iconName)
 {
     auto *button = new QToolButton(this);
     button->setObjectName("iconButton");
-    button->setIcon(Icons::get(iconName, ThemeColors::forTheme(m_theme).icon));
+    button->setIconSize(QSize(16, 16));
+    button->setIcon(Icons::get(iconName, ThemeColors::forTheme(m_theme).icon, 16));
     button->setAutoRaise(true);
     button->setProperty("iconName", iconName);
     return button;
@@ -87,7 +90,7 @@ void Toolbar::applyButtonIcons()
     const ThemeColors colors = ThemeColors::forTheme(m_theme);
     const auto set = [this, &colors](QToolButton *button, const QString &name = QString()) {
         const QString iconName = name.isEmpty() ? button->property("iconName").toString() : name;
-        button->setIcon(Icons::get(iconName, colors.icon));
+        button->setIcon(Icons::get(iconName, colors.icon, 16));
     };
     set(m_back);
     set(m_forward);
@@ -95,10 +98,10 @@ void Toolbar::applyButtonIcons()
     set(m_bookmarks, m_bookmarked ? "star-filled" : "star");
     set(m_downloads, "download");
     m_downloads->setIcon(Icons::get("download",
-                                    m_activeDownloads > 0 ? colors.accent : colors.icon));
+                                    m_activeDownloads > 0 ? colors.accent : colors.icon, 16));
     set(m_ai, "panel-right");
     m_ai->setIcon(Icons::get("panel-right",
-                             m_aiExpanded ? colors.accent : colors.icon));
+                             m_aiExpanded ? colors.accent : colors.icon, 16));
     set(m_settings);
     m_security->setIcon(Icons::get(m_security->property("iconName").toString(),
                                    m_security->property("iconDanger").toBool()
@@ -124,6 +127,8 @@ void Toolbar::setSecurity(const QUrl &url)
         danger = true;
     } else if (!url.isEmpty())
         name = "globe";
+    else
+        name = "search"; // empty page: Chrome-style search glyph
     m_security->setProperty("iconName", name);
     m_security->setProperty("iconDanger", danger);
     const bool insecure = url.scheme() == "http";
