@@ -115,6 +115,22 @@ Qt 6.11 on some systems logs to the journal by default; the
 Output lands in `dist/`: `Moch-<version>-x86_64.AppImage`, its `.sha256`, and —
 when `UPDATE_URL` is set — a `.zsync` delta file.
 
+To make it show up in your desktop launcher:
+
+```sh
+./packaging/install.sh                       # uses dist/Moch-<version>-x86_64.AppImage
+./packaging/install.sh ~/Downloads/Moch-0.1.0-x86_64.AppImage
+```
+
+An AppImage does not register itself — the `.desktop` file inside the image is
+only read by integration daemons such as `appimaged`, which most systems do not
+run. The installer copies the image to `~/Applications`, writes
+`~/.local/share/applications/moch-browser.desktop` with an absolute `Exec`
+path, installs the icon at 16–512 px, and refreshes the desktop and icon
+caches. It uses the name **Moch Browser** and the icon **`moch-browser`**
+because "Moch" and `moch.png` are already taken by an unrelated application on
+some machines, and icon names are global.
+
 The script needs `appimagetool`; it is not packaged for Arch, so unpack the
 official AppImage once:
 
