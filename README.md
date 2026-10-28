@@ -45,7 +45,8 @@ agent's context.
   forces it) — with a live tool timeline, approval
   prompts, and an always-visible Stop button.
 - Agent runtime: 16 typed browser tools with JSON-Schema argument validation,
-  per-tool timeouts, tool-call and wall-clock limits, cancellation, and
+  per-tool timeouts, a tool-call cap, an opt-in wall-clock limit (off by
+  default), cancellation, and
   approval gates driven by the permission policy (readonly / cautious /
   autonomous).
 - Any OpenAI-compatible model provider (OpenAI, OpenRouter, Groq, Together,

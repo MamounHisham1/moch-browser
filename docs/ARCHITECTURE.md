@@ -76,7 +76,7 @@ saved on change. Schema:
   },
   "agent": {
     "permission_level": "cautious",   // "readonly" | "cautious" | "autonomous"
-    "max_task_seconds": 300,
+    "max_task_seconds": 0,
     "max_tool_calls": 40,
     "confirm_downloads": true
   },
@@ -152,7 +152,7 @@ Idle → Running → (AwaitingApproval → Running)* → Done | Failed | Cancell
 
 Loop per iteration: append context → provider.chat() → if toolCalls: validate →
 risk-gate → execute (timeout) → append ToolResult → repeat; else finish with content.
-Limits: `max_tool_calls`, `max_task_seconds`, abort() honored between steps and by
+Limits: `max_tool_calls` (the runaway guard; 0 = unlimited), `max_task_seconds` is opt-in (0 = unlimited, the default); abort() honored between steps and by
 aborting in-flight provider calls. All state changes emit signals for the UI timeline.
 Task transcript persisted to SQLite `agent_tasks`.
 

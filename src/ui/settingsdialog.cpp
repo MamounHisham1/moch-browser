@@ -81,8 +81,10 @@ SettingsDialog::SettingsDialog(Settings *settings, QWidget *parent)
     form->addRow(tr("Agent permission level"), m_permission);
 
     m_maxTaskSeconds = new QSpinBox();
-    m_maxTaskSeconds->setRange(30, 3600);
+    m_maxTaskSeconds->setRange(0, 36000);
     m_maxTaskSeconds->setSuffix(" s");
+    m_maxTaskSeconds->setSpecialValueText(tr("No limit"));
+    m_maxTaskSeconds->setSingleStep(30);
     form->addRow(tr("Max task duration"), m_maxTaskSeconds);
     m_maxToolCalls = new QSpinBox();
     m_maxToolCalls->setRange(5, 500);
@@ -125,8 +127,8 @@ void SettingsDialog::load()
     refreshAiPane();
     m_permission->setCurrentIndex(m_permission->findData(
         m_settings->get("agent.permission_level", "cautious").toString()));
-    m_maxTaskSeconds->setValue(m_settings->get("agent.max_task_seconds", 300).toInt());
-    m_maxToolCalls->setValue(m_settings->get("agent.max_tool_calls", 40).toInt());
+    m_maxTaskSeconds->setValue(m_settings->get("agent.max_task_seconds", 0).toInt());
+    m_maxToolCalls->setValue(m_settings->get("agent.max_tool_calls", 80).toInt());
     m_confirmDownloads->setChecked(
         m_settings->get("agent.confirm_downloads", true).toBool());
     m_doNotTrack->setChecked(m_settings->get("privacy.do_not_track", true).toBool());

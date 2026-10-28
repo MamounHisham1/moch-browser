@@ -120,9 +120,12 @@ void AgentService::startTask(const QString &goal, const QString &pageContext)
     }
     m_messages.append(ChatMessage{ChatMessage::User, userText, {}, {}, {}});
 
-    const int maxSeconds = m_settings->get("agent.max_task_seconds", 300).toInt();
+    // No wall-clock limit by default: the clock only runs when the user
+    // opts in with a positive agent.max_task_seconds.
+    const int maxSeconds = m_settings->get("agent.max_task_seconds", 0).toInt();
     m_taskTimer.start();
-    m_wallClock->start(maxSeconds * 1000);
+    if (maxSeconds > 0)
+        m_wallClock->start(maxSeconds * 1000);
 
     step("start", goal, QString(), true);
     setState(State::Running);
@@ -158,8 +161,10 @@ void AgentService::runLoop()
 
 bool AgentService::checkLimits()
 {
-    const int maxCalls = m_settings->get("agent.max_tool_calls", 40).toInt();
-    if (m_toolCallCount >= maxCalls) {
+    // The tool-call cap is the real runaway guard; 0 means unlimited here
+    // too, for users who truly want the agent unbounded.
+    const int maxCalls = m_settings->get("agent.max_tool_calls", 80).toInt();
+    if (maxCalls > 0 && m_toolCallCount >= maxCalls) {
         finish(State::Failed, QString("Stopped after reaching the %1 tool-call limit.")
                                   .arg(maxCalls));
         return false;
