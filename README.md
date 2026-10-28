@@ -105,6 +105,60 @@ QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 ctest --test-dir build --out
 Qt 6.11 on some systems logs to the journal by default; the
 `QT_FORCE_STDERR_LOGGING=1` environment variable restores stderr logs.
 
+## Packaging (AppImage)
+
+```sh
+./packaging/make-appimage.sh            # version comes from CMakeLists.txt
+./packaging/make-appimage.sh 0.1.0      # or pass one explicitly
+```
+
+Output lands in `dist/`: `Moch-<version>-x86_64.AppImage`, its `.sha256`, and —
+when `UPDATE_URL` is set — a `.zsync` delta file.
+
+The script needs `appimagetool`; it is not packaged for Arch, so unpack the
+official AppImage once:
+
+```sh
+curl -LO https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+chmod +x appimagetool-x86_64.AppImage
+./appimagetool-x86_64.AppImage --appimage-extract
+mkdir -p ~/.local/opt && mv squashfs-root ~/.local/opt/appimagetool
+```
+
+What the script does, and why it is cheap to re-run:
+
+- **Incremental build.** Only changed translation units recompile. Job count is
+  sized from `MemAvailable` because a single QtWebEngine-heavy unit peaks near
+  1.2 GB; `-j$(nproc)` on an 8 GB machine gets `cc1plus` OOM-killed.
+- **Cached staging.** The ~430 MB of Qt/Chromium payload is copied, never
+  compiled. Staging is keyed on the Arch package versions it copies from, the
+  built binary, and the script's own hash, so a code-only release skips it and
+  costs one link plus a squashfs pack (about a minute).
+- **Bundled:** Qt itself, QtWebEngine + `QtWebEngineProcess`, Chromium's `.pak`
+  resources and locales, SQLite/TLS/image/QPA plugins, i18n data, and every
+  shared library they need.
+- **Not bundled, by design:** glibc and the loader, the graphics driver stack
+  (GL/EGL/DRM/GBM/Vulkan/NVIDIA), the X11 and Wayland client libraries, and
+  audio/session buses. Those belong to the host session.
+- **Verified.** The script unpacks `usr/bin/moch` back out of the finished
+  image and compares it byte-for-byte with the binary it just built, so an
+  empty or half-packed image fails the release instead of shipping.
+
+Deliberate caveats:
+
+- The bundled Chromium is frozen at packaging time. Every `qt6-webengine`
+  upgrade on the build host is a Chromium security update that must be
+  repackaged to reach users; `moch --version` reports the Chromium version
+  inside a given build.
+- Chromium's SUID sandbox cannot be installed inside a read-only squashfs, so
+  QtWebEngine uses the user-namespace sandbox. On kernels with unprivileged
+  user namespaces disabled, run with `QTWEBENGINE_DISABLE_SANDBOX=1` — that
+  trades the renderer sandbox for a working browser. Moch's own tool
+  permissions, approval gates and secret redaction are unaffected either way.
+- The AppImage is built against the host's glibc, so it targets Arch-like
+  distributions rather than "any Linux". Building in an older container is the
+  fix if that matters.
+
 ## Configuration
 
 Settings live in `~/.config/moch/settings.json` and in the Settings dialog

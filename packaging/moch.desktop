@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Moch
+GenericName=Web Browser
+Comment=AI-native web browser with a built-in browsing agent
+Exec=moch %U
+Icon=moch
+Terminal=false
+Categories=Network;WebBrowser;
+Keywords=browser;web;ai;agent;
+MimeType=x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/about;text/html;application/xhtml+xml;
+StartupNotify=true
+StartupWMClass=moch
+X-AppImage-Version=@VERSION@

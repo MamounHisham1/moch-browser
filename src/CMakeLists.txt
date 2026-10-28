@@ -51,3 +51,5 @@ target_include_directories(moch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(moch PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Sql Qt6::Svg Qt6::WebChannel
 )
+
+target_compile_definitions(moch PRIVATE MOCH_VERSION="${PROJECT_VERSION}")

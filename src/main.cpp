@@ -3,8 +3,14 @@
 #include <QTimer>
 #include <QWebEngineSettings>
 
+#include <QtWebEngineCore/qtwebenginecoreglobal.h>
+
 #include "app/applicationcontroller.hpp"
 #include "browser/mochurlscheme.hpp"
+
+#ifndef MOCH_VERSION
+#define MOCH_VERSION "0.0.0-dev"
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -13,7 +19,9 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QApplication::setApplicationName("moch");
     QApplication::setOrganizationName("moch");
-    QApplication::setApplicationVersion("0.1.0");
+    QApplication::setApplicationVersion(QStringLiteral(MOCH_VERSION " (Qt %1, Chromium %2)")
+                                            .arg(QString::fromLatin1(qVersion()),
+                                                 QString::fromLatin1(qWebEngineChromiumVersion())));
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Moch — an AI-native browser");

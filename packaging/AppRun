@@ -1,0 +1,24 @@
+#!/bin/sh
+# AppRun for Moch. Everything Moch needs at runtime — Qt, QtWebEngine,
+# Chromium's helper process, its .pak resources and locales — lives inside
+# the AppDir, so point each lookup at the bundled copy before Qt starts.
+set -eu
+
+HERE="$(dirname "$(readlink -f "$0")")"
+
+export PATH="$HERE/usr/bin${PATH:+:$PATH}"
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+export QT_PLUGIN_PATH="$HERE/usr/lib/qt6/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$HERE/usr/lib/qt6/plugins/platforms"
+
+export QTWEBENGINEPROCESS_PATH="$HERE/usr/lib/qt6/QtWebEngineProcess"
+export QTWEBENGINE_RESOURCES_PATH="$HERE/usr/share/qt6/resources"
+export QTWEBENGINE_LOCALES_PATH="$HERE/usr/share/qt6/translations/qtwebengine_locales"
+
+# Chromium's SUID sandbox cannot be installed inside a read-only squashfs
+# image, so QtWebEngine falls back to the user-namespace sandbox. Kernels
+# shipped with unprivileged user namespaces disabled refuse that too; in that
+# case a caller can export QTWEBENGINE_DISABLE_SANDBOX=1 to trade the
+# renderer sandbox for a working browser. We never set it here.
+exec "$HERE/usr/bin/moch" "$@"
