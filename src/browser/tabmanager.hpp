@@ -47,6 +47,9 @@ public:
     TabInfo info(int index) const;
 
     int addTab(const QUrl &url = QUrl("moch://newtab"), bool background = false);
+    // Applies the Moch theme to web-content scrollbars in every tab, and to
+    // tabs created from now on.
+    void setScrollbarTheme(const QString &theme);
     void closeTab(int index);
     void setCurrentIndex(int index);
     void navigateCurrent(const QString &userInput);
@@ -95,4 +98,5 @@ private:
     int m_current = -1;
     QTimer *m_saveTimer = nullptr;
     bool m_trackSession = false;
+    QString m_scrollbarTheme = QStringLiteral("dark");
 };

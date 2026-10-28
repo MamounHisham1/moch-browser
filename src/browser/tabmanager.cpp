@@ -14,10 +14,13 @@
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
 
+#include <utility>
+
 #include "browser/bookmarkstore.hpp"
 #include "browser/historystore.hpp"
 #include "browser/newtabbridge.hpp"
 #include "browser/setupbridge.hpp"
+#include "browser/scrollbarstyle.hpp"
 #include "browser/urlresolver.hpp"
 #include "browser/webview.hpp"
 #include "storage/settings.hpp"
@@ -107,11 +110,23 @@ TabInfo TabManager::info(int index) const
     return info;
 }
 
+void TabManager::setScrollbarTheme(const QString &theme)
+{
+    if (m_scrollbarTheme == theme)
+        return;
+    m_scrollbarTheme = theme;
+    for (WebView *view : std::as_const(m_views)) {
+        if (view->page())
+            ScrollbarStyle::install(view->page(), theme);
+    }
+}
+
 int TabManager::addTab(const QUrl &url, bool background)
 {
     WebView *view = new WebView(m_stack);
     if (m_profile)
         view->setPage(new QWebEnginePage(m_profile, view));
+    ScrollbarStyle::install(view->page(), m_scrollbarTheme);
     view->setTabIndex(m_views.size());
     m_stack->addWidget(view);
     m_views.append(view);

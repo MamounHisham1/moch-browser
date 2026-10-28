@@ -405,38 +405,48 @@ QToolTip {
     padding: 5px 9px;
 }
 
-/* ---- Scrollbars: thin overlay style ---- */
+/* ---- Scrollbars: slim floating pill, accent while dragging ---- */
 
 QScrollBar:vertical {
     background: transparent;
-    width: 8px;
-    margin: 2px;
+    width: 11px;
+    margin: 2px 1px;
 }
 
 QScrollBar::handle:vertical {
     background: #333845;
-    border-radius: 3px;
-    min-height: 32px;
+    border-radius: 4px;
+    min-height: 36px;
+    margin: 0 2px;
 }
 
 QScrollBar::handle:vertical:hover {
-    background: #4a5265;
+    background: #5b8def;
+}
+
+QScrollBar::handle:vertical:pressed {
+    background: #7aa5f5;
 }
 
 QScrollBar:horizontal {
     background: transparent;
-    height: 8px;
-    margin: 2px;
+    height: 11px;
+    margin: 1px 2px;
 }
 
 QScrollBar::handle:horizontal {
     background: #333845;
-    border-radius: 3px;
-    min-width: 32px;
+    border-radius: 4px;
+    min-width: 36px;
+    margin: 2px 0;
 }
 
 QScrollBar::handle:horizontal:hover {
-    background: #4a5265;
+    background: #5b8def;
+}
+
+QScrollBar::handle:horizontal:pressed {
+    background: #7aa5f5;
 }
 
 QScrollBar::add-line, QScrollBar::sub-line,

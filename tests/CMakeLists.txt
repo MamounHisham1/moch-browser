@@ -41,6 +41,7 @@ qt_add_executable(tst_browsercore
     ../src/browser/bookmarkstore.cpp ../src/browser/bookmarkstore.hpp
     ../src/browser/historystore.cpp ../src/browser/historystore.hpp
     ../src/browser/tabmanager.cpp ../src/browser/tabmanager.hpp
+    ../src/browser/scrollbarstyle.cpp ../src/browser/scrollbarstyle.hpp
     ../src/browser/urlresolver.cpp ../src/browser/urlresolver.hpp
     ../src/browser/webview.cpp ../src/browser/webview.hpp
     ../src/browser/newtabbridge.cpp ../src/browser/newtabbridge.hpp
@@ -72,6 +73,7 @@ qt_add_executable(tst_agent
     ../src/browser/bookmarkstore.cpp ../src/browser/bookmarkstore.hpp
     ../src/browser/historystore.cpp ../src/browser/historystore.hpp
     ../src/browser/tabmanager.cpp ../src/browser/tabmanager.hpp
+    ../src/browser/scrollbarstyle.cpp ../src/browser/scrollbarstyle.hpp
     ../src/browser/newtabbridge.cpp ../src/browser/newtabbridge.hpp
     ../src/browser/setupbridge.cpp ../src/browser/setupbridge.hpp
     ../src/browser/openrouterauth.cpp ../src/browser/openrouterauth.hpp
@@ -134,6 +136,7 @@ qt_add_executable(tst_navtool
     ../src/browser/bookmarkstore.cpp ../src/browser/bookmarkstore.hpp
     ../src/browser/historystore.cpp ../src/browser/historystore.hpp
     ../src/browser/tabmanager.cpp ../src/browser/tabmanager.hpp
+    ../src/browser/scrollbarstyle.cpp ../src/browser/scrollbarstyle.hpp
     ../src/browser/newtabbridge.cpp ../src/browser/newtabbridge.hpp
     ../src/browser/setupbridge.cpp ../src/browser/setupbridge.hpp
     ../src/browser/openrouterauth.cpp ../src/browser/openrouterauth.hpp
@@ -221,6 +224,7 @@ qt_add_executable(tst_secretbox
     ../src/browser/bookmarkstore.cpp ../src/browser/bookmarkstore.hpp
     ../src/browser/historystore.cpp ../src/browser/historystore.hpp
     ../src/browser/tabmanager.cpp ../src/browser/tabmanager.hpp
+    ../src/browser/scrollbarstyle.cpp ../src/browser/scrollbarstyle.hpp
     ../src/browser/newtabbridge.cpp ../src/browser/newtabbridge.hpp
     ../src/browser/setupbridge.cpp ../src/browser/setupbridge.hpp
     ../src/browser/openrouterauth.cpp ../src/browser/openrouterauth.hpp

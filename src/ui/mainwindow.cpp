@@ -500,6 +500,7 @@ void MainWindow::applyTheme()
     m_toolbar->applyTheme(theme);
     m_tabBar->applyTheme(theme);
     m_aiSidebar->applyTheme(theme);
+    m_tabs->setScrollbarTheme(theme);
     applyMenuIcons();
 }
 

@@ -13,6 +13,7 @@ qt_add_executable(moch
     browser/mochurlscheme.cpp browser/mochurlscheme.hpp
     browser/newtabbridge.cpp browser/newtabbridge.hpp
     browser/openrouterauth.cpp browser/openrouterauth.hpp
+    browser/scrollbarstyle.cpp browser/scrollbarstyle.hpp
     browser/setupbridge.cpp browser/setupbridge.hpp
     browser/tabmanager.cpp browser/tabmanager.hpp
     browser/urlresolver.cpp browser/urlresolver.hpp
